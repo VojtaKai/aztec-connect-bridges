@@ -35,17 +35,11 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
     }
 
     address public immutable rollupProcessor;
-    // uint public poolPid;
-    
-
 
     PoolInfo public poolinfo;
 
     mapping(address => PoolInfo) public pools;
     uint public lastPoolLength;
-
-    // bool public isMatchingPoolFound;
-    // uint public constant PRECISION = 1e18;
 
     // Deposit Contract for Convex Finance - Main File
     IConvexFinanceBooster public constant CONVEX_DEPOSIT = IConvexFinanceBooster(0xF403C135812408BFbE8713b5A23a04b3D48AAE31);
@@ -57,8 +51,7 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
     ICurveLpToken public CURVE_LP_TOKEN;
 
     // General Interface for any Curve Rewards Contract
-    // ICurveRewards public CURVE_REWARDS = ICurveRewards(0x14F02f3b47B407A7a0cdb9292AA077Ce9E124803); // NENI DYNAMICKY, HAZI ERROR!!!
-    ICurveRewards public CURVE_REWARDS; // NENI DYNAMICKY, HAZI ERROR!!!
+    ICurveRewards public CURVE_REWARDS;
     
     error stakingUnsuccessful();
     error withdrawalUnsuccessful();
@@ -74,21 +67,6 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
         rollupProcessor = _rollupProcessor;
         // _mint(address(this), DUST) // for optimization
     }
-
-    // function getPool(AztecTypes.AztecAsset calldata _inputAssetA, AztecTypes.AztecAsset calldata _outputAssetA) private returns(bool isInputCurveLpToken, uint poolPid, bool isPoolOpen, address curveLpToken, address convexToken, address curveRewards) {
-    //     uint poolLength = CONVEX_DEPOSIT.poolLength();
-
-    //      for (uint i=0; i < poolLength; i++) {
-    //         (address curveLpToken, address convexToken,, address curveRewards,, bool isPoolShut) = CONVEX_DEPOSIT.poolInfo(i);
-    //         if (curveLpToken == _inputAssetA.erc20Address && convexToken == _outputAssetA.erc20Address) {
-    //             return (true, i, !isPoolShut, curveLpToken, convexToken, curveRewards);
-    //         } else if (curveLpToken == _outputAssetA.erc20Address && convexToken == _inputAssetA.erc20Address) {
-    //             return (false, i, !isPoolShut, curveLpToken, convexToken, curveRewards);
-    //         } else {
-    //             revert invalidInputOutputAssets();
-    //         }
-    //     }
-    // }
 
     function fillPools(uint currentPoolLength) public {
         for (uint i=0; i < currentPoolLength; i++) {
@@ -130,7 +108,7 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
     returns(
         uint outputValueA,
         uint, 
-        bool // tady je vetsinou nejakej isAsync
+        bool
     ) {
         if (_totalInputValue == 0) {
             revert invalidTotalInputValue();
@@ -142,14 +120,13 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
             lastPoolLength = currentPoolLength;
         }
         
-
         PoolInfo memory selectedPool;
         bool isInputCurveLpToken;
 
-        if (pools[_inputAssetA.erc20Address].exists) { // pak se jedna o Curve LP Token na vstupu =>
+        if (pools[_inputAssetA.erc20Address].exists) {
             isInputCurveLpToken = true;
             selectedPool = pools[_inputAssetA.erc20Address];
-        } else if (pools[_outputAssetA.erc20Address].exists) { // convex token na vstupu
+        } else if (pools[_outputAssetA.erc20Address].exists) {
             selectedPool = pools[_outputAssetA.erc20Address];
         } else {
             revert invalidInputOutputAssets();
@@ -167,14 +144,12 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
         // staking
         if (isInputCurveLpToken) {
             // approval
-            CURVE_LP_TOKEN.approve(address(CONVEX_DEPOSIT), _totalInputValue); // this should only be allowed for depositing
+            CURVE_LP_TOKEN.approve(address(CONVEX_DEPOSIT), _totalInputValue);
             _approve(address(this), rollupProcessor, _totalInputValue);
 
             uint startCurveRewards = CURVE_REWARDS.balanceOf(address(this));
 
             bool isStakingSuccessful = CONVEX_DEPOSIT.deposit(selectedPool.poolPid, _totalInputValue, true);
-            
-            emit StakingResult(isStakingSuccessful); // asi neni treba
 
             if(!isStakingSuccessful) {
                 revert stakingUnsuccessful();
@@ -186,9 +161,6 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
 
             _mint(address(this), outputValueA);
         } else { //withdrawing (unstaking)
-
-            // bridge should have tokens because I mocked it
-            emit BridgeTokenAmount(balanceOf(address(this)));
 
             // approvals
             CURVE_LP_TOKEN.approve(rollupProcessor, _totalInputValue);
@@ -206,28 +178,7 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
 
             outputValueA = (endCurveLpTokens - startCurveLpTokens);
 
-            emit BridgeTokenAmount(balanceOf(address(this)));
-            emit BridgeTokenAmount(outputValueA);
-            emit BridgeTokenAmount(totalSupply());
-
-
-            _burn(address(this), outputValueA); // no balance yet
+            _burn(address(this), outputValueA);
         }
-
-        // bool isInputCurveLpToken; // if input not Curve LP Token than it is Convex Token
-
-
-        // (isInputCurveLpToken, poolPid, isPoolOpen, curveLpToken, convexToken, curveRewards) = getPool(_inputAssetA, _outputAssetA);
-
-        // CURVE_LP_TOKEN = ICurveLpToken(curveLpToken);
-        // CONVEX_TOKEN = IConvexToken(convexToken); // not used
-        // CURVE_REWARDS = ICurveRewards(curveRewards);
-
-        // approvals
-        // CURVE_LP_TOKEN.approve(address(this), _totalInputValue);
-
-         // Approve rollup processor to take input value of input asset
-        // IERC20(_outputAssetA.erc20Address).approve(ROLLUP_PROCESSOR, _totalInputValue);
-
     }
 }
