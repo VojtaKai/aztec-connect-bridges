@@ -130,7 +130,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         assertEq(IERC20(CURVE_LP_TOKEN).balanceOf(rollupProcessor), withdrawalAmount);
 
         assertEq(IERC20(address(bridge)).balanceOf(address(bridge)), 0);
-        assertEq(IERC20(CURVE_LP_TOKEN).balanceOf(rollupProcessor), 0);
+        assertEq(IERC20(address(bridge)).balanceOf(rollupProcessor), 0);
     }
 
     function _deposit(uint depositAmount) internal {

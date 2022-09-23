@@ -29,7 +29,6 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
     struct PoolInfo {
         uint poolPid;
         address curveLpToken;
-        address convexToken;
         address curveRewards;
         bool exists;
     }
@@ -43,9 +42,6 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
 
     // Deposit Contract for Convex Finance - Main File
     IConvexFinanceBooster public constant CONVEX_DEPOSIT = IConvexFinanceBooster(0xF403C135812408BFbE8713b5A23a04b3D48AAE31);
-
-    // General Interface for any Convex Token Contract
-    IConvexToken public CONVEX_TOKEN;
 
     // General Interface for any Curve LP Token Contract
     ICurveLpToken public CURVE_LP_TOKEN;
@@ -70,8 +66,8 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
 
     function fillPools(uint currentPoolLength) public {
         for (uint i=0; i < currentPoolLength; i++) {
-            (address curveLpToken, address convexToken,, address curveRewards,,) = CONVEX_DEPOSIT.poolInfo(i);
-            pools[curveLpToken] = PoolInfo(i, curveLpToken, convexToken, curveRewards, true);
+            (address curveLpToken,,, address curveRewards,,) = CONVEX_DEPOSIT.poolInfo(i);
+            pools[curveLpToken] = PoolInfo(i, curveLpToken, curveRewards, true);
         }
     }
 
@@ -133,13 +129,7 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
         }
 
         CURVE_LP_TOKEN = ICurveLpToken(selectedPool.curveLpToken);
-        CONVEX_TOKEN = IConvexToken(selectedPool.convexToken);
         CURVE_REWARDS = ICurveRewards(selectedPool.curveRewards);
-        (,,,,,bool isPoolShutDown) = CONVEX_DEPOSIT.poolInfo(selectedPool.poolPid);
-
-        if (isPoolShutDown) {
-            revert poolIsClosed(); // aby se nestalo, ze ten pool bude zavrenej a ja z nej chci alespon vybrat tokeny, ale nemuzu, mozna neni muj ukol though
-        }
 
         // staking
         if (isInputCurveLpToken) {
