@@ -9,16 +9,17 @@ import {ConvexStakingBridge} from "../../../bridges/convex/ConvexStakingBridge.s
 import {AztecTypes} from "../../../aztec/libraries/AztecTypes.sol";
 import {ErrorLib} from "../../../bridges/base/ErrorLib.sol";
 import {ICurveLpToken} from "../../../interfaces/convex/ICurveLpToken.sol";
+import {IConvexFinanceBooster} from "../../../interfaces/convex/IConvexFinanceBooster.sol";
 
 contract ConvexStakingBridgeTest is BridgeTestBase {
     // ICurveLpToken private constant CURVE_LP_TOKEN = ICurveLpToken(0xe7A3b38c39F97E977723bd1239C3470702568e7B);
-    address private constant CURVE_LP_TOKEN = 0xe7A3b38c39F97E977723bd1239C3470702568e7B;
-    address private constant CONVEX_TOKEN = 0xbE665430e4C439aF6C92ED861939E60A963C6d0c;
-    address private constant BOOSTER = 0xF403C135812408BFbE8713b5A23a04b3D48AAE31;
-    address private constant STAKER = 0x989AEb4d175e16225E39E87d0D97A3360524AD80;
-    address private constant GAUGE = 0x9f57569EaA61d427dEEebac8D9546A745160391C;
-    address private constant STASH = 0x8c8A5557F5ca466a93419042cdb407686545b1a8;
-    address private constant CRV_REWARDS = 0x14F02f3b47B407A7a0cdb9292AA077Ce9E124803;
+    address private CURVE_LP_TOKEN = 0xe7A3b38c39F97E977723bd1239C3470702568e7B;
+    address private CONVEX_TOKEN = 0xbE665430e4C439aF6C92ED861939E60A963C6d0c;
+    address private BOOSTER = 0xF403C135812408BFbE8713b5A23a04b3D48AAE31;
+    address private STAKER = 0x989AEb4d175e16225E39E87d0D97A3360524AD80;
+    address private GAUGE = 0x9f57569EaA61d427dEEebac8D9546A745160391C;
+    address private STASH = 0x8c8A5557F5ca466a93419042cdb407686545b1a8;
+    address private CRV_REWARDS = 0x14F02f3b47B407A7a0cdb9292AA077Ce9E124803;
 
     address private rollupProcessor;
 
@@ -47,42 +48,12 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
     }
 
     function testStakeLpTokens(uint96 depositAmount) public {
-        AztecTypes.AztecAsset memory inputAssetA = AztecTypes.AztecAsset({
-            id: 1,
-            erc20Address: CURVE_LP_TOKEN,
-            assetType: AztecTypes.AztecAssetType.ERC20
-        });
-
-        AztecTypes.AztecAsset memory outputAssetA = AztecTypes.AztecAsset({
-            id: 100,
-            erc20Address: address(bridge),
-            assetType: AztecTypes.AztecAssetType.ERC20
-        });
-
-        deal(CURVE_LP_TOKEN, address(bridge), depositAmount);
-
-        if (depositAmount == 0) {
-            vm.expectRevert(invalidTotalInputValue.selector);
+        uint poolLength = IConvexFinanceBooster(BOOSTER).poolLength();
+        for (uint i=0; i < poolLength; i++) {
+            (address curveLpToken,,, address curveRewards,,) = IConvexFinanceBooster(BOOSTER).poolInfo(i);
         }
-   
-        (uint outputValueA, uint outputValueB, bool isAsync) = bridge.convert(
-            inputAssetA,
-            emptyAsset,
-            outputAssetA,
-            emptyAsset,
-            depositAmount,
-            0,
-            0,
-            address(11)
-        );
-        assertEq(outputValueA, depositAmount);
-        assertEq(outputValueB, 0, "Output value B is not 0."); // I am not really returning these two, so it actually returns a default..
-        assertTrue(!isAsync, "Bridge is in async mode which it shouldn't");
-
-        assertEq(bridge.balanceOf(address(bridge)), outputValueA);
-        IERC20(outputAssetA.erc20Address).transferFrom(address(bridge), rollupProcessor, outputValueA);
+        _deposit(depositAmount);
         assertEq(bridge.balanceOf(address(bridge)), 0);
-        assertEq(bridge.balanceOf(rollupProcessor), outputValueA);
     }
 
     function testWithdrawLpTokens(uint64 withdrawalAmount) public {
@@ -133,8 +104,13 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         assertEq(IERC20(address(bridge)).balanceOf(rollupProcessor), 0);
     }
 
+    /** 
+    @notice Mocking of Curve LP Token balance.
+    @notice Depositing Curve LP Tokens and their subsequent staking.  
+    @notice Minting of CSB Tokens.
+    @param depositAmount Number of Curve LP Tokens to stake.
+    */
     function _deposit(uint depositAmount) internal {
-        // 1. mock number of Curve LP Tokens to stake
         deal(CURVE_LP_TOKEN, address(bridge), depositAmount);
 
         AztecTypes.AztecAsset memory inputAssetA = AztecTypes.AztecAsset({
@@ -153,7 +129,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
             vm.expectRevert(invalidTotalInputValue.selector);
         }
    
-        // 2. stake tokens
         (uint outputValueA, uint outputValueB, bool isAsync) = bridge.convert(
             inputAssetA,
             emptyAsset,
@@ -164,20 +139,14 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
             0,
             address(11)
         );
+
         assertEq(outputValueA, depositAmount);
         assertEq(outputValueB, 0, "Output value B is not 0."); // I am not really returning these two, so it actually returns a default..
         assertTrue(!isAsync, "Bridge is in async mode which it shouldn't");
-
         assertEq(bridge.balanceOf(address(bridge)), outputValueA);
-
-        // 3. Check the total supply of SPB token is equal to the amount of LUSD deposited
         assertEq(bridge.totalSupply(), depositAmount);
 
-        // 4. Transfer SPB back to RollupProcessor
         IERC20(address(bridge)).transferFrom(address(bridge), rollupProcessor, outputValueA);
-
-        // 5. Check the SPB balance of rollupProcessor is equal to the amount of LUSD deposited
-        assertEq(outputValueA, depositAmount);
         assertEq(bridge.balanceOf(rollupProcessor), depositAmount);
     }
 }
