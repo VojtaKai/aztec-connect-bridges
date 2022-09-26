@@ -40,6 +40,8 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
     mapping(address => PoolInfo) public pools;
     uint public lastPoolLength;
 
+    mapping(uint => bool) public invalidPoolPids; 
+
     // Deposit Contract for Convex Finance - Main File
     IConvexFinanceBooster public constant CONVEX_DEPOSIT = IConvexFinanceBooster(0xF403C135812408BFbE8713b5A23a04b3D48AAE31);
 
@@ -53,7 +55,9 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
     error withdrawalUnsuccessful();
     error invalidTotalInputValue();
     error invalidInputOutputAssets();
+    error invalidPoolPid();
     error poolIsClosed();
+    error invalidAssetType();
 
     event StakingResult(bool isStakingSuccessful);
     event BridgeTokenAmount(uint tokenAmount);
@@ -61,9 +65,35 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
     
     constructor(address _rollupProcessor) BridgeBase(_rollupProcessor) {
         rollupProcessor = _rollupProcessor;
+        addInvalidPoolPid(48);
         // _mint(address(this), DUST) // for optimization
     }
 
+    modifier onlyRollUpProcessor() {
+        require(msg.sender == rollupProcessor, "Invalid message sender");
+        _;
+    }
+
+    /** 
+    @notice Add a new pool pid that should not be allowed to interact with.
+    @param poolPid Id of a pool to add.
+    */
+    function addInvalidPoolPid(uint poolPid) public onlyRollUpProcessor {
+        invalidPoolPids[poolPid] = true;
+    }
+
+    /** 
+    @notice Remove a pool pid from a map of invalid pool pids.
+    @param poolPid Id of a pool to remove.
+    */
+    function removeInvalidPoolPid(uint poolPid) public onlyRollUpProcessor {
+        delete invalidPoolPids[poolPid];
+    }
+
+    /**
+    @notice Load pool information once into a mapping unless poolLength changes
+    @param currentPoolLength New number of pools.
+    */
     function fillPools(uint currentPoolLength) public {
         for (uint i=0; i < currentPoolLength; i++) {
             (address curveLpToken,,, address curveRewards,,) = CONVEX_DEPOSIT.poolInfo(i);
@@ -100,7 +130,7 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
     external
     payable 
     override(BridgeBase) 
-    onlyRollup 
+    onlyRollUpProcessor 
     returns(
         uint outputValueA,
         uint, 
@@ -108,6 +138,12 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
     ) {
         if (_totalInputValue == 0) {
             revert invalidTotalInputValue();
+        }
+
+        if (_inputAssetA.assetType != AztecTypes.AztecAssetType.ERC20 || 
+            _outputAssetA.assetType != AztecTypes.AztecAssetType.ERC20
+        ) {
+            revert invalidAssetType();
         }
 
         uint currentPoolLength = CONVEX_DEPOSIT.poolLength();
@@ -126,6 +162,10 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
             selectedPool = pools[_outputAssetA.erc20Address];
         } else {
             revert invalidInputOutputAssets();
+        }
+
+        if (invalidPoolPids[selectedPool.poolPid]) {
+            revert invalidPoolPid();
         }
 
         CURVE_LP_TOKEN = ICurveLpToken(selectedPool.curveLpToken);
@@ -151,7 +191,6 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
 
             _mint(address(this), outputValueA);
         } else { //withdrawing (unstaking)
-
             // approvals
             CURVE_LP_TOKEN.approve(rollupProcessor, _totalInputValue);
             _approve(address(this), rollupProcessor, _totalInputValue);

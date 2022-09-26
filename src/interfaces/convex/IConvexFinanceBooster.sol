@@ -19,4 +19,7 @@ interface IConvexFinanceBooster {
 
     // Pool information 
     function poolInfo(uint256) external view returns(address,address,address,address,address, bool);
+
+    // Staker
+    function staker() external view returns(address);
 }
