@@ -17,7 +17,11 @@ import {ICurveRewards} from "../../interfaces/convex/ICurveRewards.sol";
 
 
 /**
- * @notice A DefiBridge that stakes Curve LP Token into Convex Finance and receives Convex Token as an ouput 
+ * @notice A DefiBridge that stakes Curve LP Token into Convex Finance. Unstaking supported as well.
+ * @notice A DefiBridge that stakes Curve LP Token into Convex Finance. Convex Finance transfers Curve LP Tokens 
+ * from bridge to a liquidity gauge. New Convex Tokens are minted and then staked (transfered) to CRV Rewards.
+ * Bridge mints a matching version of the staked Convex Tokens, CSB Tokens, and assignes their ownership to the RollUpProcessor.
+ * At unstaking, both - CSB Tokens and Convex Tokens - are burned and ownership of Curve LP Tokens is given back to the RollUpProcessor.
  * @dev Synchronous and stateless bridge that will hold no funds beyond dust for gas-savings.
  * @author Vojtech Kaiser
  */
@@ -26,59 +30,44 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
     using SafeERC20 for IConvexToken;
     using SafeERC20 for ICurveLpToken;
     // using SafeERC20 for ICurveRewards; // not really needed...I am not sending anything, just checking balance
+
+    // CONTRACTS
+    // Deposit Contract for Convex Finance - Main File
+    IConvexFinanceBooster public constant CONVEX_DEPOSIT = IConvexFinanceBooster(0xF403C135812408BFbE8713b5A23a04b3D48AAE31);
+    // General Interface for any Curve LP Token Contract
+    ICurveLpToken public CURVE_LP_TOKEN;
+    // General Interface for any Curve Rewards Contract
+    ICurveRewards public CURVE_REWARDS;
+    
+    // POOLS
+    uint public lastPoolLength;
+
     struct PoolInfo {
         uint poolPid;
         address curveLpToken;
         address curveRewards;
         bool exists;
     }
-
-    address public immutable rollupProcessor;
-
-    PoolInfo public poolinfo;
-
     mapping(address => PoolInfo) public pools;
-    uint public lastPoolLength;
 
-    mapping(uint => bool) public invalidPoolPids; 
+    mapping(uint => bool) public invalidPoolPids;
 
-    // Deposit Contract for Convex Finance - Main File
-    IConvexFinanceBooster public constant CONVEX_DEPOSIT = IConvexFinanceBooster(0xF403C135812408BFbE8713b5A23a04b3D48AAE31);
-
-    // General Interface for any Curve LP Token Contract
-    ICurveLpToken public CURVE_LP_TOKEN;
-
-    // General Interface for any Curve Rewards Contract
-    ICurveRewards public CURVE_REWARDS;
-    
-    error stakingUnsuccessful();
-    error withdrawalUnsuccessful();
+    // ERRORS
     error invalidTotalInputValue();
+    error invalidAssetType();
     error invalidInputOutputAssets();
     error invalidPoolPid();
-    error poolIsClosed();
-    error invalidAssetType();
 
-    event StakingResult(bool isStakingSuccessful);
-    event BridgeTokenAmount(uint tokenAmount);
-
-    
     constructor(address _rollupProcessor) BridgeBase(_rollupProcessor) {
-        rollupProcessor = _rollupProcessor;
         addInvalidPoolPid(48);
         // _mint(address(this), DUST) // for optimization
-    }
-
-    modifier onlyRollUpProcessor() {
-        require(msg.sender == rollupProcessor, "Invalid message sender");
-        _;
     }
 
     /** 
     @notice Add a new pool pid that should not be allowed to interact with.
     @param poolPid Id of a pool to add.
     */
-    function addInvalidPoolPid(uint poolPid) public onlyRollUpProcessor {
+    function addInvalidPoolPid(uint poolPid) public onlyRollup {
         invalidPoolPids[poolPid] = true;
     }
 
@@ -86,7 +75,7 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
     @notice Remove a pool pid from a map of invalid pool pids.
     @param poolPid Id of a pool to remove.
     */
-    function removeInvalidPoolPid(uint poolPid) public onlyRollUpProcessor {
+    function removeInvalidPoolPid(uint poolPid) public onlyRollup {
         delete invalidPoolPids[poolPid];
     }
 
@@ -101,7 +90,8 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
         }
     }
 
-    // receive() external payable {} // now needed but I think it should be anywhere
+    // receive() external payable {} // Probably not needed
+
     /**
     * @notice Staking and unstaking of Curve LP Tokens via Convex Finance in a form of Convex Tokens.
     * @notice To be able to stake a token, you already need to own Curve LP Token from one of its pools.
@@ -123,14 +113,14 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
         AztecTypes.AztecAsset calldata _outputAssetA,
         AztecTypes.AztecAsset calldata,
         uint _totalInputValue,
-        uint, // _interactionNonce, // whatever Interaction None, something for pulling balancing later on
-        uint64, // _auxData, // some extra data, not sure what now
+        uint, // _interactionNonce,
+        uint64, // _auxData
         address
     ) 
     external
     payable 
     override(BridgeBase) 
-    onlyRollUpProcessor 
+    onlyRollup 
     returns(
         uint outputValueA,
         uint, 
@@ -173,17 +163,13 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
 
         // staking
         if (isInputCurveLpToken) {
-            // approval
+            // approvals
             CURVE_LP_TOKEN.approve(address(CONVEX_DEPOSIT), _totalInputValue);
-            _approve(address(this), rollupProcessor, _totalInputValue);
+            _approve(address(this), ROLLUP_PROCESSOR, _totalInputValue);
 
             uint startCurveRewards = CURVE_REWARDS.balanceOf(address(this));
 
-            bool isStakingSuccessful = CONVEX_DEPOSIT.deposit(selectedPool.poolPid, _totalInputValue, true);
-
-            if(!isStakingSuccessful) {
-                revert stakingUnsuccessful();
-            }
+            CONVEX_DEPOSIT.deposit(selectedPool.poolPid, _totalInputValue, true);
 
             uint endCurveRewards = CURVE_REWARDS.balanceOf(address(this)); 
 
@@ -192,16 +178,12 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
             _mint(address(this), outputValueA);
         } else { //withdrawing (unstaking)
             // approvals
-            CURVE_LP_TOKEN.approve(rollupProcessor, _totalInputValue);
-            _approve(address(this), rollupProcessor, _totalInputValue);
+            CURVE_LP_TOKEN.approve(ROLLUP_PROCESSOR, _totalInputValue);
+            _approve(address(this), ROLLUP_PROCESSOR, _totalInputValue);
 
             uint startCurveLpTokens = CURVE_LP_TOKEN.balanceOf(address(this));
 
-            bool isWithdrawalSuccessful = CONVEX_DEPOSIT.withdraw(selectedPool.poolPid, _totalInputValue);
-
-            if(!isWithdrawalSuccessful) {
-                revert withdrawalUnsuccessful();
-            }
+            CONVEX_DEPOSIT.withdraw(selectedPool.poolPid, _totalInputValue);
 
             uint endCurveLpTokens = CURVE_LP_TOKEN.balanceOf(address(this));
 
