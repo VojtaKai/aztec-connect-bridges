@@ -69,22 +69,6 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
     },
   ];
 
-  // I am not able to distinguish aux data just from the assets
-  // Aux data are utilized to claim rewards of the staked tokens (or not)
-  // async getAuxData(
-  //   inputAssetA: AztecAsset,
-  //   inputAssetB: AztecAsset,
-  //   outputAssetA: AztecAsset,
-  //   outputAssetB: AztecAsset,
-  // ): Promise<number[]> {
-
-  //   // upon withdrawal
-  //   // after crvRewards.withdraw()
-  //   // check convexToken balance for bridge
-  //   // if rewards activated it should be more than the inital input amount
-  //   return [10] // wrong...
-  // }
-
   async getExpectedOutput(
     inputAssetA: AztecAsset,
     inputAssetB: AztecAsset,
@@ -93,21 +77,22 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
     auxData: number,
     inputValue: bigint,
   ): Promise<bigint[]> {
-    // mam input asset a mam output asset
-    // chci vratit, co bridge normalne vraci, coz je CSB token v urcite kvantite - outputValueA
-    // mam i auxData, ta ale hrajou malou roli a ted je muzu ignorovat
-
+    // input should be again curve Lp token
+    // expected number of minted convex tokens. It is denominated in CSB tokens that are minted on the bridge
+    // however, they are one to one so I could basicly say, return [inputValue]
+    // because other than that I am testing my mocks
     if (inputValue === 0n) {
       throw "InvalidInputAmount"
     }
+
+    // maybe check if assets are supported
     
-    // zkontroluj si, ze assety maji spravny type
     if (inputAssetA.assetType != AztecAssetType.ERC20 || 
       outputAssetA.assetType != AztecAssetType.ERC20
   ) {
       throw "invalidAssetType"
   }
-    // mam pooly - ty potrebuju, abych tam nasel assets a urcil spravny pool
+
     this.loadPools()
 
     let selectedPool: IPoolInfo | undefined;
@@ -132,16 +117,13 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
     const curveRewards = ICurveRewards__factory.connect(selectedPool.curveRewards, this.ethersProvider)
     const convexToken = IConvexToken__factory.connect(selectedPool.convexToken, this.ethersProvider)
 
-    // depositni nebo withdrawni
     if (isDeposit) {
-      //deposit and check balance
       const balanceBefore = (await convexToken.balanceOf(curveRewards.address)).toBigInt()
       await this.convexBooster.deposit(selectedPool.poolPid, inputValue, true)
       const balanceAfter = (await convexToken.balanceOf(curveRewards.address)).toBigInt()
 
-      return [balanceAfter - balanceBefore] // or just inputValue
+      return [balanceAfter - balanceBefore]
     } else {
-      // withdraw and check balance
       const claimRewards = auxData === 1
       await curveRewards.withdraw(inputValue, claimRewards)
       await this.convexBooster.withdraw(selectedPool.poolPid, inputValue)
@@ -170,6 +152,21 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
   //   return 0;
   // }
 
+  async getAPR(yieldAsset: AztecAsset): Promise<number> {
+    // Not taking into account how the deposited funds will change the yield
+    // The approximate number of blocks per year that is assumed by the interest rate model
+
+    // yieldAsset is going to be curve Rewards
+    const blocksPerYear = 7132 * 365;
+    const curveRewards = ICurveRewards__factory.connect(yieldAsset.erc20Address.toString(), this.ethersProvider);
+    
+    const totalSupply = await curveRewards.totalSupply();
+    const rewardRatePerBlock = await curveRewards.rewardRate();
+    // return Number((((totalSupply.add((rewardRatePerBlock.mul(blocksPerYear)))).div(totalSupply)).sub(1)).mul(10 ** 2));
+    return Number(rewardRatePerBlock.mul(blocksPerYear).div(totalSupply).mul(10 ** 2));
+  }
+
+  // I do actually thing this is better
   async getMarketSizeEasier(
     curveLpTokens: AztecAsset,
     inputAssetB: AztecAsset,
@@ -177,6 +174,12 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
     outputAssetB: AztecAsset,
     auxData: number,
   ): Promise<AssetValue[]> {
+    // input curveLpTokens
+    // output are CSB tokens
+
+    // load pools if needed
+    this.loadPools()
+
     const selectedPool = this.pools.find(pool => pool.curveLpToken === curveLpTokens.erc20Address.toString())
     if (!selectedPool) {
       return []
@@ -196,6 +199,9 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
     // const yvTokenContract = IYearnVault__factory.connect(yvToken.erc20Address.toString(), this.ethersProvider);
     // const totalAssets = await yvTokenContract.totalAssets();
     // return [{ assetId: underlying.id, value: totalAssets.toBigInt() }];
+
+    // input should be curveLpToken and the market size should be denominated in it
+    // output is CSB token after all and it is minted for any pool, so the number doesn't really show how strong a pool is
 
     this.loadPools()    
 
@@ -229,30 +235,42 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
     // AssetId je teda id of inputAssetA
   }
 
-  async getUnderlyingAmount(vaultAsset: AztecAsset, amount: bigint): Promise<UnderlyingAsset> {
+  async getUnderlyingAmount(csbAsset: AztecAsset, amount: bigint): Promise<UnderlyingAsset> {
+    // csb token
+    // definuje curveLpToken = underlying asset
+    // jakej pool to matchne
+    // selectedPool.curveLpToken
+    // interface curveLpToken bude potrebovat name, symbol, decimals, address, mnozstvi zpet pri withdrawalu
+    // ziskej zpet curve lp token
     const emptyAsset: AztecAsset = {
       id: 0,
-      assetType: AztecAssetType.NOT_USED,
       erc20Address: EthAddress.ZERO,
+      assetType: AztecAssetType.NOT_USED,
     };
-    const vaultContract = IYearnVault__factory.connect(vaultAsset.erc20Address.toString(), this.ethersProvider);
+
+    // go pool by pool, get curve lp token address and place it under underlying asset erc20 address
+    // while it keeps failing, keep going pool by pool
+    // eventually find the correct one and perform withdrawal!
+
+    // curve lp token
     const underlyingAsset: AztecAsset = {
       id: 0,
+      erc20Address: EthAddress.fromString('0x123456789'),
       assetType: AztecAssetType.ERC20,
-      erc20Address: EthAddress.fromString(await vaultContract.token()),
     };
-    const tokenContract = IERC20Metadata__factory.connect(underlyingAsset.erc20Address.toString(), this.ethersProvider);
-    const namePromise = tokenContract.name();
-    const symbolPromise = tokenContract.symbol();
-    const decimalsPromise = tokenContract.decimals();
-    const amountPromise = this.getExpectedOutput(vaultAsset, emptyAsset, underlyingAsset, emptyAsset, 1, amount);
+
+    // should withdraw, if 
+    const underlyingAssetAmount = await this.getExpectedOutput(csbAsset, emptyAsset, underlyingAsset, emptyAsset, 0, amount)
+
+    const curveLpToken = IERC20Metadata__factory.connect(underlyingAsset.erc20Address.toString(), this.ethersProvider)
+
     return {
       address: underlyingAsset.erc20Address,
-      name: await namePromise,
-      symbol: await symbolPromise,
-      decimals: await decimalsPromise,
-      amount: (await amountPromise)[0],
-    };
+      name: await curveLpToken.name(),
+      symbol: await curveLpToken.symbol(),
+      decimals: await curveLpToken.decimals(),
+      amount: underlyingAssetAmount[0]
+    }
   }
 
   private async isSupportedAsset(asset: AztecAsset): Promise<boolean> {
@@ -260,28 +278,6 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
 
     const assetAddress = EthAddress.fromString(await this.rollupProcessor.getSupportedAsset(asset.id));
     return assetAddress.equals(asset.erc20Address);
-  }
-
-  private async getAllVaultsAndTokens(): Promise<[EthAddress[], { [key: string]: EthAddress[] }]> {
-    const allYvETH: EthAddress[] = this.allYvETH || [];
-    const allVaultsForTokens: { [key: string]: EthAddress[] } = this.allVaultsForTokens || {};
-
-    if (!this.allVaultsForTokens) {
-      const numTokens = await this.yRegistry.numTokens();
-      for (let index = 0; index < Number(numTokens); index++) {
-        const token = await this.yRegistry.tokens(index);
-        const vault = await this.yRegistry.latestVault(token);
-        if (!allVaultsForTokens[token]) {
-          allVaultsForTokens[token] = [];
-        }
-        allVaultsForTokens[token].push(EthAddress.fromString(vault));
-        if (token === this.wETH) {
-          allYvETH.push(EthAddress.fromString(vault));
-        }
-      }
-      this.allYvETH = allYvETH;
-    }
-    return [allYvETH, allVaultsForTokens];
   }
 
   private async loadPools() {

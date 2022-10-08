@@ -231,9 +231,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
             if (invalidPoolPids[i]) {
                 continue;
             }
-            if (i != 112) {
-                continue;
-            }
 
             _setUpBridge(i);
                 

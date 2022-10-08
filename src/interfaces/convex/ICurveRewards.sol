@@ -9,4 +9,7 @@ interface ICurveRewards {
 
     // total supply of pool's convex tokens
     function totalSupply() external view returns (uint256);
+
+    // supply rate of tokens per block
+    function rewardRate() external view returns (uint256);
 }
