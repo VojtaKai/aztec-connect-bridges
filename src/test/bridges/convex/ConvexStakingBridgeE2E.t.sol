@@ -9,13 +9,13 @@ import {BridgeTestBase} from "./../../aztec/base/BridgeTestBase.sol";
 import {ErrorLib} from "../../../bridges/base/ErrorLib.sol";
 
 import {ConvexStakingBridge} from "../../../bridges/convex/ConvexStakingBridge.sol";
-import {IConvexFinanceBooster} from "../../../interfaces/convex/IConvexFinanceBooster.sol";
+import {IConvexDeposit} from "../../../interfaces/convex/IConvexDeposit.sol";
 
 
 contract ConvexStakingBridgeE2ETest is BridgeTestBase {
     address private CURVE_LP_TOKEN;
     address private CONVEX_TOKEN;
-    address private constant BOOSTER = 0xF403C135812408BFbE8713b5A23a04b3D48AAE31;
+    address private constant DEPOSIT = 0xF403C135812408BFbE8713b5A23a04b3D48AAE31;
     address private STAKER;
     address private GAUGE;
     address private STASH;
@@ -26,34 +26,41 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
 
     mapping(uint => bool) public invalidPoolPids;
 
+    // Interaction nonce
+    uint private constant INTERACTION_NONCE = 2 ** 29 + 64;
+    uint private constant INTERACTION_NONCE_STANDARDIZED = 64;
+    uint private constant INTERACTION_NONCE_STEP = 32;
+
     // To store the id of the stability pool bridge after being added
     uint256 private id;
 
     event Balance(uint balance);
     event BridgeCallData(uint bridgeCallData);
     event Show(uint balance);
+    event ShowInteractions(bool exists);
 
     function setUp() public {
-        STAKER = IConvexFinanceBooster(BOOSTER).staker();
+        STAKER = IConvexDeposit(DEPOSIT).staker();
         _setUpInvalidPoolPids(48);
 
         // labels
         vm.label(address(ROLLUP_PROCESSOR), "Rollup Processor");
         vm.label(address(this), "E2E Test Contract");
         vm.label(msg.sender, "MSG sender");
-        vm.label(BOOSTER, "Booster");
+        vm.label(DEPOSIT, "Deposit");
         vm.label(STAKER, "Staker Contract Address");
     }
 
     function testStakeWithdrawFlow(uint96 depositAmount) public {
         vm.assume(depositAmount > 1);
 
-        uint poolLength = IConvexFinanceBooster(BOOSTER).poolLength();
+        uint poolLength = IConvexDeposit(DEPOSIT).poolLength();
+        uint j = 0;
         for (uint i=0; i < poolLength; i++) {
             if (invalidPoolPids[i]) {
                 continue;
             }
-            if (i != 112) {
+            if (i != 1 && i != 112) {
                 continue;
             }
             _setUpBridge(i);
@@ -62,7 +69,6 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
             // Add the new bridge and set its initial gasLimit
             ROLLUP_PROCESSOR.setSupportedBridge(address(bridge), 1000000);
             // Add Assets and set their initial gasLimits
-            ROLLUP_PROCESSOR.setSupportedAsset(address(bridge), 100000); // CSB Token
             ROLLUP_PROCESSOR.setSupportedAsset(CURVE_LP_TOKEN, 100000);
             vm.stopPrank();
 
@@ -71,7 +77,9 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
 
             // get Aztec assets
             AztecTypes.AztecAsset memory curveLpAsset = getRealAztecAsset(CURVE_LP_TOKEN);
-            AztecTypes.AztecAsset memory csbAsset = getRealAztecAsset(address(bridge));
+            AztecTypes.AztecAsset memory virtualAsset = AztecTypes.AztecAsset(INTERACTION_NONCE, address(0), AztecTypes.AztecAssetType.VIRTUAL);
+            AztecTypes.AztecAsset memory virtualAssetWithdraw = AztecTypes.AztecAsset(INTERACTION_NONCE, address(0), AztecTypes.AztecAssetType.VIRTUAL);
+            
 
             // Mint depositAmount of CURVE LP Tokens for RollUp Processor
             deal(CURVE_LP_TOKEN, address(ROLLUP_PROCESSOR), depositAmount);
@@ -81,21 +89,22 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
                 id,
                 curveLpAsset,
                 emptyAsset,
-                csbAsset,
+                virtualAsset,
                 emptyAsset,
                 0
             );
             
             (uint outputValueA, uint outputValueB, bool isAsync) = sendDefiRollup(bridgeCallData, depositAmount);
             assertEq(outputValueA, depositAmount); // number of staked tokens match deposited LP Tokens
-            assertEq(outputValueB, 0, "Output value B is not 0"); // I am not really returning these two, so it actually returns a default..
+            assertEq(outputValueB, 0, "Output value B is not 0");
             assertTrue(!isAsync, "Bridge is in async mode which it shouldn't");
-            assertEq(bridge.balanceOf(address(ROLLUP_PROCESSOR)), depositAmount); // New CSB Tokens minted
 
+            (, bool res) = bridge.interactions(virtualAsset.id);
+            emit ShowInteractions(res);
             // withdrawal
             bridgeCallData = encodeBridgeCallData(
                 id,
-                csbAsset,
+                virtualAssetWithdraw,
                 emptyAsset,
                 curveLpAsset,
                 emptyAsset,
@@ -103,17 +112,18 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
             );
 
             (outputValueA, outputValueB, isAsync) = sendDefiRollup(bridgeCallData, depositAmount);
-            assertEq(outputValueA, depositAmount); // number of staked tokens match deposited LP Tokens
-            assertEq(outputValueB, 0, "Output value B is not 0"); // I am not really returning these two, so it actually returns a default..
+            assertEq(outputValueA, depositAmount); // number of withdrawn tokens match deposited LP Tokens
+            assertEq(outputValueB, 0, "Output value B is not 0");
             assertTrue(!isAsync, "Bridge is in async mode which it shouldn't");
-            assertEq(IERC20(CURVE_LP_TOKEN).balanceOf(address(ROLLUP_PROCESSOR)), depositAmount); // New CSB Tokens minted
-            assertEq(bridge.balanceOf(address(ROLLUP_PROCESSOR)), 0);
+            assertEq(IERC20(CURVE_LP_TOKEN).balanceOf(address(bridge)), 0); // Curve LP Tokens owned by bridge
+            assertEq(IERC20(CURVE_LP_TOKEN).balanceOf(address(ROLLUP_PROCESSOR)), depositAmount); // Curve LP Tokens owned by RollUp
+            j += 1;
         }
     }
 
     function _setUpBridge(uint poolPid) internal {
         bridge = new ConvexStakingBridge(address(ROLLUP_PROCESSOR));
-        (CURVE_LP_TOKEN, CONVEX_TOKEN, GAUGE, CRV_REWARDS, STASH,) = IConvexFinanceBooster(BOOSTER).poolInfo(poolPid);
+        (CURVE_LP_TOKEN, CONVEX_TOKEN, GAUGE, CRV_REWARDS, STASH,) = IConvexDeposit(DEPOSIT).poolInfo(poolPid);
         
         // labels
         vm.label(address(bridge), "Bridge");

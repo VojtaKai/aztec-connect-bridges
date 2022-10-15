@@ -11,7 +11,7 @@ import {AztecTypes} from "../../aztec/libraries/AztecTypes.sol";
 import {ICurvePool} from "../../interfaces/curve/ICurvePool.sol";
 import {ErrorLib} from "../base/ErrorLib.sol";
 import {IRollupProcessor} from "../../aztec/interfaces/IRollupProcessor.sol";
-import {IConvexFinanceBooster} from "../../interfaces/convex/IConvexFinanceBooster.sol";
+import {IConvexDeposit} from "../../interfaces/convex/IConvexDeposit.sol";
 import {IConvexToken} from "../../interfaces/convex/IConvexToken.sol";
 import {ICurveLpToken} from "../../interfaces/convex/ICurveLpToken.sol";
 import {ICurveRewards} from "../../interfaces/convex/ICurveRewards.sol";
@@ -23,18 +23,18 @@ import {ICurveRewards} from "../../interfaces/convex/ICurveRewards.sol";
  * from bridge to a liquidity gauge. New Convex Tokens are minted and then staked (transfered) to CRV Rewards.
  * Bridge mints a matching version of the staked Convex Tokens, CSB Tokens, and assignes their ownership to the RollUpProcessor.
  * At unstaking, both - CSB Tokens and Convex Tokens - are burned and ownership of Curve LP Tokens is given back to the RollUpProcessor.
- * @dev Synchronous and stateless bridge that will hold no funds beyond dust for gas-savings.
+ * @dev Synchronous and stateful bridge that will hold track of interactions and information about minted tokens.
  * @author Vojtech Kaiser
  */
-contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") {
-    using SafeERC20 for IConvexFinanceBooster;
+contract ConvexStakingBridge is BridgeBase {
+    using SafeERC20 for IConvexDeposit;
     using SafeERC20 for IConvexToken;
     using SafeERC20 for ICurveLpToken;
     // using SafeERC20 for ICurveRewards; // not really needed...I am not sending anything, just checking balance
 
     // CONTRACTS
     // Deposit Contract for Convex Finance - Main File
-    IConvexFinanceBooster public constant BOOSTER = IConvexFinanceBooster(0xF403C135812408BFbE8713b5A23a04b3D48AAE31);
+    IConvexDeposit public constant DEPOSIT = IConvexDeposit(0xF403C135812408BFbE8713b5A23a04b3D48AAE31);
     // General Interface for any Curve LP Token Contract
     ICurveLpToken public CURVE_LP_TOKEN;
     // General Interface for any Curve LP Token Contract
@@ -54,37 +54,46 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
     }
     mapping(address => PoolInfo) public pools;
 
+    // INTERACTIONS - virtual asset
+    struct Interaction {
+        address representedConvexToken;
+        bool exists;
+    }
+
+    mapping(uint => Interaction) public interactions;
+
     // ERRORS
-    error invalidAssetType();
-    error invalidInputOutputAssets();
+    error InvalidAssetType();
+    error UnknownVirtualAsset();
 
     // EVENT FOR ME
     
 
     constructor(address _rollupProcessor) BridgeBase(_rollupProcessor) {
-        // _mint(address(this), DUST) // for optimization
         loadPools();
     }
+
     /**
     @notice Loads Curve Pool information into a map. Cached unless number of pools has changed.
     */
     function loadPools() internal {
-        uint currentPoolLength = BOOSTER.poolLength();
-        if (lastPoolLength != currentPoolLength) {
-            fillPools(currentPoolLength);
+        uint currentPoolLength = DEPOSIT.poolLength();
+        if (currentPoolLength != lastPoolLength) {
+            for (uint i=0; i < currentPoolLength; i++) {
+                (address curveLpToken, address convexToken,, address curveRewards,,) = DEPOSIT.poolInfo(i);
+                pools[curveLpToken] = PoolInfo(i, curveLpToken, convexToken, curveRewards, true);
+            }
             lastPoolLength = currentPoolLength;
         }
     }
 
-    /**
-    @notice Interates over Curve pools and stores pool info into a map.
-    @param currentPoolLength New number of pools.
+    /** 
+    @notice sets up pool tokens
     */
-    function fillPools(uint currentPoolLength) public {
-        for (uint i=0; i < currentPoolLength; i++) {
-            (address curveLpToken, address convexToken,, address curveRewards,,) = BOOSTER.poolInfo(i);
-            pools[curveLpToken] = PoolInfo(i, curveLpToken, convexToken, curveRewards, true);
-        }
+    function setTokens(PoolInfo memory selectedPool) internal {
+        CURVE_LP_TOKEN = ICurveLpToken(selectedPool.curveLpToken);
+        CONVEX_TOKEN = IConvexToken(selectedPool.convexToken);
+        CURVE_REWARDS = ICurveRewards(selectedPool.curveRewards);
     }
 
     // receive() external payable {} // Probably not needed
@@ -110,7 +119,7 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
         AztecTypes.AztecAsset calldata _outputAssetA,
         AztecTypes.AztecAsset calldata,
         uint _totalInputValue,
-        uint, // _interactionNonce,
+        uint _interactionNonce,
         uint64 _auxData,
         address
     ) 
@@ -127,61 +136,70 @@ contract ConvexStakingBridge is BridgeBase, ERC20("ConvexStakingBridge", "CSB") 
             revert ErrorLib.InvalidInputAmount();
         }
 
-        if (_inputAssetA.assetType != AztecTypes.AztecAssetType.ERC20 || 
-            _outputAssetA.assetType != AztecTypes.AztecAssetType.ERC20
-        ) {
-            revert invalidAssetType();
-        }
-        
         PoolInfo memory selectedPool;
-        bool isInputCurveLpToken;
 
-        if (pools[_inputAssetA.erc20Address].exists) {
-            isInputCurveLpToken = true;
+        if (_inputAssetA.assetType == AztecTypes.AztecAssetType.ERC20 &&
+        _outputAssetA.assetType == AztecTypes.AztecAssetType.VIRTUAL) {
+            // deposit
+            if (!pools[_inputAssetA.erc20Address].exists) {
+                revert ErrorLib.InvalidInputA();
+            }
+
             selectedPool = pools[_inputAssetA.erc20Address];
-        } else if (pools[_outputAssetA.erc20Address].exists) {
-            selectedPool = pools[_outputAssetA.erc20Address];
-        } else {
-            revert invalidInputOutputAssets();
-        }
 
-        CURVE_LP_TOKEN = ICurveLpToken(selectedPool.curveLpToken);
-        CONVEX_TOKEN = IConvexToken(selectedPool.convexToken);
-        CURVE_REWARDS = ICurveRewards(selectedPool.curveRewards);
+            setTokens(selectedPool);
 
-        // staking
-        if (isInputCurveLpToken) {
             // approvals
-            CURVE_LP_TOKEN.approve(address(BOOSTER), _totalInputValue);
-            _approve(address(this), ROLLUP_PROCESSOR, _totalInputValue);
+            CURVE_LP_TOKEN.approve(address(DEPOSIT), _totalInputValue);
 
             uint startCurveRewards = CURVE_REWARDS.balanceOf(address(this));
 
-            BOOSTER.deposit(selectedPool.poolPid, _totalInputValue, true);
+            DEPOSIT.deposit(selectedPool.poolPid, _totalInputValue, true);
 
             uint endCurveRewards = CURVE_REWARDS.balanceOf(address(this)); 
 
             outputValueA = (endCurveRewards - startCurveRewards);
+            // emit InteractionAdd(_outputAssetA.id);
+            interactions[_outputAssetA.id] = Interaction(selectedPool.convexToken, true);
+        } else if (_inputAssetA.assetType == AztecTypes.AztecAssetType.VIRTUAL &&
+        _outputAssetA.assetType == AztecTypes.AztecAssetType.ERC20) {
+            // withdraw
+            if (!interactions[_inputAssetA.id].exists) {
+                revert UnknownVirtualAsset();
+            }
 
-            _mint(address(this), outputValueA);
-        } else { //withdrawing (unstaking)
-            // approvals
-            CURVE_LP_TOKEN.approve(ROLLUP_PROCESSOR, _totalInputValue);
-            _approve(address(this), ROLLUP_PROCESSOR, _totalInputValue);
+            selectedPool = pools[_outputAssetA.erc20Address];
 
-            uint startCurveLpTokens = CURVE_LP_TOKEN.balanceOf(address(this));
+            if (!selectedPool.exists || 
+            selectedPool.convexToken != interactions[_inputAssetA.id].representedConvexToken) {
+                revert ErrorLib.InvalidOutputA();
+            }
 
-            // transfer CONVEX Tokens from CrvRewards back to the bridge
-            bool claim = _auxData == 1; // if passed anything else but 1, rewards will not be claimed, shouldn't be limited to 0 and 1 only?
-            CURVE_REWARDS.withdraw(_totalInputValue, claim); // claim should be probably sent in AuxData if yes or no
-            
-            BOOSTER.withdraw(selectedPool.poolPid, _totalInputValue);
+            setTokens(selectedPool);
 
-            uint endCurveLpTokens = CURVE_LP_TOKEN.balanceOf(address(this));
-
-            outputValueA = (endCurveLpTokens - startCurveLpTokens);
-
-            _burn(address(this), outputValueA);
+            outputValueA = _withdraw(_inputAssetA, _totalInputValue, _auxData, selectedPool);
+        } else {
+             revert InvalidAssetType();
         }
+    }
+
+    function _withdraw(AztecTypes.AztecAsset memory inputAssetA, uint totalInputValue, uint64 auxData, PoolInfo memory selectedPool) internal returns(uint outputValueA) {
+        // approvals
+        CURVE_LP_TOKEN.approve(ROLLUP_PROCESSOR, totalInputValue);
+
+        uint startCurveLpTokens = CURVE_LP_TOKEN.balanceOf(address(this));
+
+        // transfer CONVEX Tokens from CrvRewards back to the bridge
+        bool claim = auxData == 1; // if passed anything else but 1, rewards will not be claimed, shouldn't be limited to 0 and 1 only?
+        
+        CURVE_REWARDS.withdraw(totalInputValue, claim); // claim should be probably sent in AuxData if yes or no
+        
+        DEPOSIT.withdraw(selectedPool.poolPid, totalInputValue);
+
+        uint endCurveLpTokens = CURVE_LP_TOKEN.balanceOf(address(this));
+
+        outputValueA = (endCurveLpTokens - startCurveLpTokens);
+
+        // delete interactions[inputAssetA.id];
     }
 }

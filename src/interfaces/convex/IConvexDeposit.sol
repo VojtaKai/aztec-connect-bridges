@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPLv2
 pragma solidity >=0.8.4;
 
-interface IConvexFinanceBooster {
+interface IConvexDeposit {
     // Deposit lp tokens and stake
     function deposit(uint256 _pid, uint256 _amount, bool _stake) external returns(bool);
 
@@ -22,4 +22,7 @@ interface IConvexFinanceBooster {
 
     // Staker
     function staker() external view returns(address);
+
+    // Staker
+    function minter() external view returns(address);
 }

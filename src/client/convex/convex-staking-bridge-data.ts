@@ -3,7 +3,6 @@
 import { EthAddress } from "@aztec/barretenberg/address";
 import { EthereumProvider } from "@aztec/barretenberg/blockchain";
 import { Web3Provider } from "@ethersproject/providers"; // sice s etherem nedelam, ale potrebuju providera
-import { BigNumber } from "ethers";
 import { createWeb3Provider } from "../aztec/provider"; // asi potrebuju
 
 import "isomorphic-fetch";
@@ -11,19 +10,16 @@ import "isomorphic-fetch";
 import { AssetValue } from "@aztec/barretenberg/asset";
 import {
   IERC20Metadata__factory,
-  IERC20__factory,
   IRollupProcessor,
   IRollupProcessor__factory,
-  IConvexFinanceBooster__factory,
-  IConvexFinanceBooster,
+  IConvexDeposit__factory,
+  IConvexDeposit,
   IConvexToken,
   IConvexToken__factory,
   ICurveLpToken,
   ICurveLpToken__factory,
   ICurveRewards,
-  ICurveRewards__factory,
-  ConvexStakingBridge,
-  ConvexStakingBridge__factory,
+  ICurveRewards__factory
 } from "../../../typechain-types";
 import {
   AuxDataConfig,
@@ -34,21 +30,28 @@ import {
   UnderlyingAsset,
 } from "../bridge-data";
 
-interface IPoolInfo {
+export interface IPoolInfo {
   poolPid: number,
   curveLpToken: string,
   convexToken: string,
   curveRewards: string
 }
+
+interface IBridgeInteraction {
+  id: number,
+  representedConvexToken: string
+}
+
 export class ConvexBridgeData implements BridgeDataFieldGetters {
   bridgeAddress = "0x123456789";
   lastPoolLength: Number = 0;
   pools: IPoolInfo[] = [];
+  interactions: IBridgeInteraction[] = [];
 
   constructor(
     private ethersProvider: Web3Provider,
     private rollupProcessor: IRollupProcessor,
-    private convexBooster: IConvexFinanceBooster,
+    private convexBooster: IConvexDeposit,
   ) {}
 
   static create(provider: EthereumProvider, rollupProcessor: EthAddress, convexBooster: EthAddress) {
@@ -56,7 +59,7 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
     return new ConvexBridgeData(
       ethersProvider,
       IRollupProcessor__factory.connect(rollupProcessor.toString(), ethersProvider),
-      IConvexFinanceBooster__factory.connect(convexBooster.toString(), ethersProvider),
+      IConvexDeposit__factory.connect(convexBooster.toString(), ethersProvider),
     );
   }
 
@@ -65,7 +68,7 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
       start: 0,
       length: 64,
       solidityType: SolidityType.uint64,
-      description: "AuxData determine whether claim (1) or not claim (0) staking rewards at withdrawing",
+      description: "AuxData determine whether claim (1) or not claim (anything but 1) staking rewards at withdrawing",
     },
   ];
 
@@ -85,90 +88,91 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
       throw "InvalidInputAmount"
     }
 
-    // maybe check if assets are supported
+    await this.loadPools()
     
-    if (inputAssetA.assetType != AztecAssetType.ERC20 || 
-      outputAssetA.assetType != AztecAssetType.ERC20
-  ) {
-      throw "invalidAssetType"
-  }
-
-    this.loadPools()
-
+    // maybe check if assets are supported
     let selectedPool: IPoolInfo | undefined;
-    let isDeposit: boolean | undefined;
+    let curveRewards: ICurveRewards
+    let convexToken: IConvexToken
+    let curveLpToken: ICurveLpToken
 
-    for (const pool of this.pools) {
-      if (inputAssetA.erc20Address.toString() === pool.curveLpToken) {
-        selectedPool = pool
-        isDeposit = true
-        break
-      } else if (outputAssetA.erc20Address.toString() === pool.curveLpToken) {
-        selectedPool = pool
-        isDeposit = false
-        break
+    if (inputAssetA.assetType == AztecAssetType.ERC20 && outputAssetA.assetType == AztecAssetType.VIRTUAL) {
+      selectedPool = this.pools.find(p => p.curveLpToken === inputAssetA.erc20Address.toString())
+      console.log('this.pools', this.pools)
+      if (!selectedPool) {
+        throw new Error("Invalid Input A")
       }
-    }
 
-    if (selectedPool === undefined) {
-      throw "Invalid Assets"
-    }
+      curveRewards = ICurveRewards__factory.connect(selectedPool.curveRewards, this.ethersProvider)
+      convexToken = IConvexToken__factory.connect(selectedPool.convexToken, this.ethersProvider)
 
-    const curveRewards = ICurveRewards__factory.connect(selectedPool.curveRewards, this.ethersProvider)
-    const convexToken = IConvexToken__factory.connect(selectedPool.convexToken, this.ethersProvider)
 
-    if (isDeposit) {
       const balanceBefore = (await convexToken.balanceOf(curveRewards.address)).toBigInt()
       await this.convexBooster.deposit(selectedPool.poolPid, inputValue, true)
       const balanceAfter = (await convexToken.balanceOf(curveRewards.address)).toBigInt()
 
+      this.interactions.push({
+        id: outputAssetA.id,
+        representedConvexToken: selectedPool.convexToken
+      })
+
       return [balanceAfter - balanceBefore]
-    } else {
+    } else if (inputAssetA.assetType == AztecAssetType.VIRTUAL && outputAssetA.assetType == AztecAssetType.ERC20) {
+      const interaction = this.interactions.find(i => i.id === inputAssetA.id)
+      if (!interaction) {
+        throw new Error("Unknown Virtual Asset")
+      }
+
+      selectedPool = this.pools.find(p => p.curveLpToken === outputAssetA.erc20Address.toString())
+
+      if (!selectedPool || selectedPool.convexToken != interaction.representedConvexToken) {
+        throw new Error("Invalid Output Token")
+      }
+
+      curveRewards = ICurveRewards__factory.connect(selectedPool.curveRewards, this.ethersProvider)
+      convexToken = IConvexToken__factory.connect(selectedPool.convexToken, this.ethersProvider)
+      curveLpToken = ICurveLpToken__factory.connect(outputAssetA.erc20Address.toString(), this.ethersProvider)
+
       const claimRewards = auxData === 1
+
+      const balanceBefore = (await curveLpToken.balanceOf(this.bridgeAddress)).toBigInt()
+
       await curveRewards.withdraw(inputValue, claimRewards)
       await this.convexBooster.withdraw(selectedPool.poolPid, inputValue)
-      return [inputValue]
+
+      const balanceAfter = (await curveLpToken.balanceOf(this.bridgeAddress)).toBigInt()
+
+      return [balanceAfter - balanceBefore]
+
+    } else {
+      throw new Error("Invalid Asset Type")
     }
   }
 
-  // @param yieldAsset in this case yieldAsset are yv tokens (e.g. yvDai, yvEth, etc.)
-  // async getAPR(yieldAsset: AztecAsset): Promise<number> {
-  //   type TminVaultStruct = {
-  //     address: string;
-  //     apy: {
-  //       gross_apr: number;
-  //     };
-  //   };
-  //   const allVaults = (await (
-  //     await fetch("https://api.yearn.finance/v1/chains/1/vaults/all")
-  //   ).json()) as TminVaultStruct[];
-  //   const currentVault = allVaults.find((vault: TminVaultStruct) =>
-  //     EthAddress.fromString(vault.address).equals(yieldAsset.erc20Address),
-  //   );
-  //   if (currentVault) {
-  //     const grossAPR = currentVault.apy.gross_apr;
-  //     return grossAPR * 100;
-  //   }
-  //   return 0;
-  // }
-
+  // convex token should be the yieldAsset
   async getAPR(yieldAsset: AztecAsset): Promise<number> {
     // Not taking into account how the deposited funds will change the yield
     // The approximate number of blocks per year that is assumed by the interest rate model
+    await this.loadPools()
 
-    // yieldAsset is going to be curve Rewards
+    const curveRewardsAddress = this.pools.find(p => p.convexToken === yieldAsset.erc20Address.toString())?.curveRewards
+
+    if (!curveRewardsAddress) {
+      throw new Error("Invalid yield asset")
+    }
+
     const blocksPerYear = 7132 * 365;
-    const curveRewards = ICurveRewards__factory.connect(yieldAsset.erc20Address.toString(), this.ethersProvider);
+    const curveRewards = ICurveRewards__factory.connect(curveRewardsAddress, this.ethersProvider);
     
-    const totalSupply = await curveRewards.totalSupply();
-    const rewardRatePerBlock = await curveRewards.rewardRate();
-    // return Number((((totalSupply.add((rewardRatePerBlock.mul(blocksPerYear)))).div(totalSupply)).sub(1)).mul(10 ** 2));
-    return Number(rewardRatePerBlock.mul(blocksPerYear).div(totalSupply).mul(10 ** 2));
+    const totalSupply = Number(await curveRewards.totalSupply());
+    const rewardRatePerBlock = Number(await curveRewards.rewardRate());
+
+    return rewardRatePerBlock * blocksPerYear / totalSupply * (10 ** 2)
   }
 
-  // I do actually thing this is better
+  // I do actually think this is better
   async getMarketSizeEasier(
-    curveLpTokens: AztecAsset,
+    curveLpToken: AztecAsset,
     inputAssetB: AztecAsset,
     outputAssetA: AztecAsset,
     outputAssetB: AztecAsset,
@@ -178,89 +182,70 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
     // output are CSB tokens
 
     // load pools if needed
-    this.loadPools()
+    await this.loadPools()
 
-    const selectedPool = this.pools.find(pool => pool.curveLpToken === curveLpTokens.erc20Address.toString())
+    const selectedPool = this.pools.find(pool => pool.curveLpToken === curveLpToken.erc20Address.toString())
     if (!selectedPool) {
       return []
     }
     const curveRewards = ICurveRewards__factory.connect(selectedPool.curveRewards, this.ethersProvider)
     const tokenSupply = await curveRewards.totalSupply()
-    return [{ assetId: curveLpTokens.id, value: tokenSupply.toBigInt()}]
+    return [{ assetId: curveLpToken.id, value: tokenSupply.toBigInt()}]
   }
 
+  // underlying je curve lp token
   async getMarketSize(
-    inputAssetA: AztecAsset,
+    underlyingToken: AztecAsset,
     inputAssetB: AztecAsset,
     outputAssetA: AztecAsset,
     outputAssetB: AztecAsset,
     auxData: number,
   ): Promise<AssetValue[]> {
-    // const yvTokenContract = IYearnVault__factory.connect(yvToken.erc20Address.toString(), this.ethersProvider);
-    // const totalAssets = await yvTokenContract.totalAssets();
-    // return [{ assetId: underlying.id, value: totalAssets.toBigInt() }];
+    await this.loadPools()
 
-    // input should be curveLpToken and the market size should be denominated in it
-    // output is CSB token after all and it is minted for any pool, so the number doesn't really show how strong a pool is
+    const selectedPool = this.pools.find(pool => pool.curveLpToken === underlyingToken.erc20Address.toString())
 
-    this.loadPools()    
-
-    let selectedPool: IPoolInfo | undefined;
-    let correctAsset: AztecAsset | undefined;
-
-    for (const pool of this.pools) {
-      if (inputAssetA.erc20Address.toString() === pool.curveLpToken) {
-        selectedPool = pool
-        correctAsset = inputAssetA
-        break
-      } else if (outputAssetA.erc20Address.toString() === pool.curveLpToken) {
-        selectedPool = pool
-        correctAsset = outputAssetA
-        break
-      }
+    if (!selectedPool) {
+      throw new Error("Invalid Input A")
     }
 
-    if (!selectedPool || !correctAsset) {
-      throw new Error("Invalid Assets")
-    }
-
-    const curveRewards = ICurveRewards__factory.connect(selectedPool.curveRewards, this.ethersProvider)
+    const curveRewards = ICurveRewards__factory.connect(selectedPool.curveRewards, this.convexBooster.provider)
     const tokenSupply = await curveRewards.totalSupply()
-    return [{ assetId: correctAsset.id, value: tokenSupply.toBigInt()}]
-
-    // go over all pools
-    // find selectedPool
-    // check totalSupply of the crvRewards contract -> to nam rekne, kolik lidi ten druh Curve LP Tokenu taky investovalo do toho Convex Poolu
-    // assetId by mel byt ten vstupni token!!! Pro totalSupply ale koukam na to, kolik je staknutejch tech vystupnich, jelikoz jsou 1:1
-    // AssetId je teda id of inputAssetA
+    return [{ assetId: underlyingToken.id, value: tokenSupply.toBigInt()}]
   }
 
-  async getUnderlyingAmount(csbAsset: AztecAsset, amount: bigint): Promise<UnderlyingAsset> {
-    // csb token
-    // definuje curveLpToken = underlying asset
-    // jakej pool to matchne
-    // selectedPool.curveLpToken
-    // interface curveLpToken bude potrebovat name, symbol, decimals, address, mnozstvi zpet pri withdrawalu
-    // ziskej zpet curve lp token
+  async getUnderlyingAmount(virtualAsset: AztecAsset, amount: bigint): Promise<UnderlyingAsset> {
+    await this.loadPools()
+
     const emptyAsset: AztecAsset = {
       id: 0,
       erc20Address: EthAddress.ZERO,
       assetType: AztecAssetType.NOT_USED,
     };
 
-    // go pool by pool, get curve lp token address and place it under underlying asset erc20 address
-    // while it keeps failing, keep going pool by pool
-    // eventually find the correct one and perform withdrawal!
+
+    const representedConvexToken = this.interactions.find(i => i.id === virtualAsset.id)?.representedConvexToken
+
+    if (!representedConvexToken) {
+      throw new Error('Unknown Virtual Asset')
+    }
+
+
+    const selectedPool = this.pools.find(pool => pool.convexToken === representedConvexToken)
+
+    if (selectedPool == undefined) {
+      throw new Error("Pool not found")
+    }
 
     // curve lp token
     const underlyingAsset: AztecAsset = {
       id: 0,
-      erc20Address: EthAddress.fromString('0x123456789'),
+      erc20Address: EthAddress.fromString(selectedPool.curveLpToken),
       assetType: AztecAssetType.ERC20,
     };
 
     // should withdraw, if 
-    const underlyingAssetAmount = await this.getExpectedOutput(csbAsset, emptyAsset, underlyingAsset, emptyAsset, 0, amount)
+    const underlyingAssetAmount = await this.getExpectedOutput(virtualAsset, emptyAsset, underlyingAsset, emptyAsset, 0, amount)
 
     const curveLpToken = IERC20Metadata__factory.connect(underlyingAsset.erc20Address.toString(), this.ethersProvider)
 
@@ -271,6 +256,18 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
       decimals: await curveLpToken.decimals(),
       amount: underlyingAssetAmount[0]
     }
+  }
+
+  async getInteractionPresentValue(interactionNonce: number, inputValue: bigint): Promise<AssetValue[]> {
+    const interaction = this.interactions.find(i => i.id === interactionNonce)
+    if (!interaction) {
+      throw new Error("Unknown interaction nonce")
+    }
+    // input convex tokens are minted in 1:1 ratio to staked curve lp tokens, input = output
+    return [{
+      assetId: interaction.id,
+      value: inputValue
+    }]
   }
 
   private async isSupportedAsset(asset: AztecAsset): Promise<boolean> {
