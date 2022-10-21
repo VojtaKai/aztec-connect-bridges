@@ -39,7 +39,8 @@ export interface IPoolInfo {
 
 interface IBridgeInteraction {
   id: number,
-  representedConvexToken: string
+  representedConvexToken: string,
+  valueStaked: bigint
 }
 
 export class ConvexBridgeData implements BridgeDataFieldGetters {
@@ -113,7 +114,8 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
 
       this.interactions.push({
         id: outputAssetA.id,
-        representedConvexToken: selectedPool.convexToken
+        representedConvexToken: selectedPool.convexToken,
+        valueStaked: inputValue
       })
 
       return [balanceAfter - balanceBefore]
@@ -121,6 +123,10 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
       const interaction = this.interactions.find(i => i.id === inputAssetA.id)
       if (!interaction) {
         throw new Error("Unknown Virtual Asset")
+      }
+
+      if (interaction.valueStaked !== inputValue) {
+        throw new Error("Incorrect Interaction Value")
       }
 
       selectedPool = this.pools.find(p => p.curveLpToken === outputAssetA.erc20Address.toString())
@@ -168,29 +174,6 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
     const rewardRatePerBlock = Number(await curveRewards.rewardRate());
 
     return rewardRatePerBlock * blocksPerYear / totalSupply * (10 ** 2)
-  }
-
-  // I do actually think this is better
-  async getMarketSizeEasier(
-    curveLpToken: AztecAsset,
-    inputAssetB: AztecAsset,
-    outputAssetA: AztecAsset,
-    outputAssetB: AztecAsset,
-    auxData: number,
-  ): Promise<AssetValue[]> {
-    // input curveLpTokens
-    // output are CSB tokens
-
-    // load pools if needed
-    await this.loadPools()
-
-    const selectedPool = this.pools.find(pool => pool.curveLpToken === curveLpToken.erc20Address.toString())
-    if (!selectedPool) {
-      return []
-    }
-    const curveRewards = ICurveRewards__factory.connect(selectedPool.curveRewards, this.ethersProvider)
-    const tokenSupply = await curveRewards.totalSupply()
-    return [{ assetId: curveLpToken.id, value: tokenSupply.toBigInt()}]
   }
 
   // underlying je curve lp token
@@ -266,15 +249,8 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
     // input convex tokens are minted in 1:1 ratio to staked curve lp tokens, input = output
     return [{
       assetId: interaction.id,
-      value: inputValue
+      value: interaction.valueStaked
     }]
-  }
-
-  private async isSupportedAsset(asset: AztecAsset): Promise<boolean> {
-    if (asset.assetType == AztecAssetType.ETH) return true;
-
-    const assetAddress = EthAddress.fromString(await this.rollupProcessor.getSupportedAsset(asset.id));
-    return assetAddress.equals(asset.erc20Address);
   }
 
   private async loadPools() {

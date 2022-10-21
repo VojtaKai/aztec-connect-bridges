@@ -27,9 +27,10 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
     mapping(uint => bool) public invalidPoolPids;
 
     // Interaction nonce
-    uint private constant INTERACTION_NONCE = 2 ** 29 + 64;
-    uint private constant INTERACTION_NONCE_STANDARDIZED = 64;
-    uint private constant INTERACTION_NONCE_STEP = 32;
+    uint private constant INTERACTION_NONCE = 32;
+    uint private constant INTERACTION_NONCE_STEP = 64;
+
+    event VirtualAssetId(uint id);
 
     // To store the id of the stability pool bridge after being added
     uint256 private id;
@@ -51,6 +52,18 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
         vm.label(STAKER, "Staker Contract Address");
     }
 
+    // Description of behavior of virtualAssetId and transaction nonce
+    // Even though virtual asset is specified, no matter the id value, the first action on a bridge (which is in this case deposit because the virtual asset is on the output)
+    // sets construct id to 0 and transaction nonce to 0 as well.
+    // Second action sets virtual asset id to 32 and nonce to 32 regardless what is defined for the virtual asset (a few steps above).
+    // Third action, for some misterious reason, uses for the virtual assets the defined ID (a few steps above). Nonce increments again by 32 to 64.
+    // Fourth action, when the virtual asset is on output, the defined ID value is ignored again and is set to match the value of the next nonce -> id: 96, nonce: 96
+    // Fifth action, when the virtual asset is on the input, the defined ID value is used again. Transaction nonce is again incremented by 32 to 128.
+    // Suspicion: When virtual asset is on the output, it sets virtual asset id to match transaction nonce
+    // Virtual asset on the input uses the defined values
+    
+    // Maybe I wont need to tweek it and only set interaction nonce to 0 for withdrawal -> if not, then first action for virtual asset always id = 0, nonce = 0, second always id = 32, nonce =32
+
     function testStakeWithdrawFlow(uint96 depositAmount) public {
         vm.assume(depositAmount > 1);
 
@@ -60,7 +73,8 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
             if (invalidPoolPids[i]) {
                 continue;
             }
-            if (i != 1 && i != 112) {
+            // if (i != 112) {
+            if (i != 1 && i != 100 && i != 112) {
                 continue;
             }
             _setUpBridge(i);
@@ -77,8 +91,23 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
 
             // get Aztec assets
             AztecTypes.AztecAsset memory curveLpAsset = getRealAztecAsset(CURVE_LP_TOKEN);
-            AztecTypes.AztecAsset memory virtualAsset = AztecTypes.AztecAsset(INTERACTION_NONCE, address(0), AztecTypes.AztecAssetType.VIRTUAL);
-            AztecTypes.AztecAsset memory virtualAssetWithdraw = AztecTypes.AztecAsset(INTERACTION_NONCE, address(0), AztecTypes.AztecAssetType.VIRTUAL);
+            // AztecTypes.AztecAsset memory virtualAsset = AztecTypes.AztecAsset(INTERACTION_NONCE, address(0), AztecTypes.AztecAssetType.VIRTUAL);
+            // AztecTypes.AztecAsset memory virtualAsset = _virtualAssetBuilder(j);
+            // THIS DIDNT WORK -- START --
+            AztecTypes.AztecAsset memory virtualAsset = AztecTypes.AztecAsset(INTERACTION_NONCE + (INTERACTION_NONCE_STEP * j), address(0), AztecTypes.AztecAssetType.VIRTUAL);
+            // THIS DIDNT WORK -- END --
+            // AztecTypes.AztecAsset memory virtualAsset;
+            // if (i == 1) {
+            //     virtualAsset = AztecTypes.AztecAsset(32, address(0), AztecTypes.AztecAssetType.VIRTUAL);
+            //     emit VirtualAssetId(virtualAsset.id);
+            // } else if (i == 112) {
+            //     virtualAsset = AztecTypes.AztecAsset(96, address(0), AztecTypes.AztecAssetType.VIRTUAL);
+            //     emit VirtualAssetId(virtualAsset.id);
+            // }
+            // AztecTypes.AztecAsset memory virtualAssetWithdraw = AztecTypes.AztecAsset(INTERACTION_NONCE, address(0), AztecTypes.AztecAssetType.VIRTUAL);
+            
+            // TWEEK VIRTUAL ASSET ID
+            _tweekVirtualAssetId(j, curveLpAsset, virtualAsset, depositAmount);
             
 
             // Mint depositAmount of CURVE LP Tokens for RollUp Processor
@@ -99,12 +128,10 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
             assertEq(outputValueB, 0, "Output value B is not 0");
             assertTrue(!isAsync, "Bridge is in async mode which it shouldn't");
 
-            (, bool res) = bridge.interactions(virtualAsset.id);
-            emit ShowInteractions(res);
             // withdrawal
             bridgeCallData = encodeBridgeCallData(
                 id,
-                virtualAssetWithdraw,
+                virtualAsset,
                 emptyAsset,
                 curveLpAsset,
                 emptyAsset,
@@ -117,9 +144,30 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
             assertTrue(!isAsync, "Bridge is in async mode which it shouldn't");
             assertEq(IERC20(CURVE_LP_TOKEN).balanceOf(address(bridge)), 0); // Curve LP Tokens owned by bridge
             assertEq(IERC20(CURVE_LP_TOKEN).balanceOf(address(ROLLUP_PROCESSOR)), depositAmount); // Curve LP Tokens owned by RollUp
+
             j += 1;
         }
     }
+
+    function _tweekVirtualAssetId(uint j,  AztecTypes.AztecAsset memory curveLpAsset,  AztecTypes.AztecAsset memory virtualAsset, uint depositAmount) internal {
+         if (j == 0) {
+            deal(CURVE_LP_TOKEN, address(ROLLUP_PROCESSOR), depositAmount);
+
+            uint256 bridgeCallDataUnused = encodeBridgeCallData(
+                id,
+                curveLpAsset,
+                emptyAsset,
+                virtualAsset,
+                emptyAsset,
+                0
+            );
+            sendDefiRollup(bridgeCallDataUnused, depositAmount);
+        }
+    }
+
+    // function _virtualAssetBuilder(uint j) internal pure returns(AztecTypes.AztecAsset memory virtualAsset) {
+    //     virtualAsset = AztecTypes.AztecAsset(INTERACTION_NONCE + (INTERACTION_NONCE_STEP * j), address(0), AztecTypes.AztecAssetType.VIRTUAL);
+    // }
 
     function _setUpBridge(uint poolPid) internal {
         bridge = new ConvexStakingBridge(address(ROLLUP_PROCESSOR));

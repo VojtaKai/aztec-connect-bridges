@@ -181,7 +181,8 @@ describe("convex staking bridge data", () => {
     // mock an interaction
     convexStakingBridge.interactions = [{
       id: virtualAsset.id,
-      representedConvexToken: convexToken1
+      representedConvexToken: convexToken1,
+      valueStaked: withdrawValue
     }]
 
     // convexStakingBridge.interactions as any = jest.mock()
@@ -190,6 +191,64 @@ describe("convex staking bridge data", () => {
 
     expect(expectedOutput[0]).toBe(10n)
 
+  })
+
+  it("should throw deposit-withdrawal mismatch error", async () => {
+    const withdrawValue = 10n
+    const valueStaked = withdrawValue + 1n
+    // addresses
+    const convexDepositAddr = "0xF403C135812408BFbE8713b5A23a04b3D48AAE31"
+
+    const curveLpToken0 = "0x9fC689CCaDa600B6DF723D9E47D84d76664a1F23"
+    const convexToken0 = "0xA1c3492b71938E144ad8bE4c2fB6810b01A43dD8"
+    const crvRewards0 = "0x8B55351ea358e5Eda371575B031ee24F462d503e"
+
+    const curveLpToken1 = "0xe7A3b38c39F97E977723bd1239C3470702568e7B"
+    const convexToken1 = "0xbE665430e4C439aF6C92ED861939E60A963C6d0c"
+    const crvRewards1 = "0x14F02f3b47B407A7a0cdb9292AA077Ce9E124803"
+
+    // mocked balances
+    const balanceBefore = 0n
+
+
+    // Mocks
+    convexDeposit = {
+      ...convexDeposit,
+      poolLength: jest.fn().mockResolvedValue(2),
+      poolInfo: jest.fn().mockResolvedValueOnce([curveLpToken0, convexToken0, "", crvRewards0, "", ""]).mockResolvedValueOnce([curveLpToken1, convexToken1, "", crvRewards1, "", ""]),
+      withdraw: jest.fn().mockResolvedValue(true)
+    }
+
+    curveRewardsClass = {
+      ...curveRewardsClass,
+      withdraw: jest.fn()
+    }
+
+    curveLpTokenClass = {
+      ...curveLpTokenClass,
+      balanceOf: jest.fn().mockResolvedValueOnce(BigNumber.from(balanceBefore)).mockResolvedValueOnce(BigNumber.from(withdrawValue))
+    }
+
+    IConvexDeposit__factory.connect = () => convexDeposit as any
+    IRollupProcessor__factory.connect = () => rollupProcessorContract as any;
+    IConvexToken__factory.connect = () => convexTokenClass as any
+    ICurveRewards__factory.connect = () => curveRewardsClass as any
+    ICurveLpToken__factory.connect = () => curveLpTokenClass as any
+    
+    const convexStakingBridge = ConvexBridgeData.create({} as any, EthAddress.random(), EthAddress.fromString(convexDepositAddr))
+
+    // mock an interaction, interaction value staked differs from the value one wants to withdraw
+    convexStakingBridge.interactions = [{
+      id: virtualAsset.id,
+      representedConvexToken: convexToken1,
+      valueStaked: valueStaked
+    }]
+
+    // convexStakingBridge.interactions as any = jest.mock()
+
+    expect(async () => {
+      await convexStakingBridge.getExpectedOutput(virtualAsset, emptyAsset, curveLpToken, emptyAsset, 0, withdrawValue)
+    }).rejects.toThrowError("Incorrect Interaction Value")
   })
 
   it("should return correct APR", async () => {
@@ -338,7 +397,8 @@ describe("convex staking bridge data", () => {
     // mock an interaction
     convexStakingBridge.interactions = [{
       id: virtualAsset.id,
-      representedConvexToken: convexToken1
+      representedConvexToken: convexToken1,
+      valueStaked: withdrawValue - balanceBefore
     }]
 
 
@@ -414,7 +474,8 @@ describe("convex staking bridge data", () => {
     // mock an interaction
     convexStakingBridge.interactions = [{
       id: virtualAsset.id,
-      representedConvexToken: convexToken1
+      representedConvexToken: convexToken1,
+      valueStaked: inputValue
     }]
 
 

@@ -19,6 +19,8 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
     address private STASH;
     address private CRV_REWARDS;
     address private MINTER;
+    address private constant CRV_TOKEN = 0xD533a949740bb3306d119CC777fa900bA034cd52;
+    address private constant CVX_TOKEN = 0x4e3FBD56CD56c3e72c1403e103b45Db9da5B9D2B;
 
     address private rollupProcessor;
 
@@ -31,6 +33,9 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
     error invalidAssetType();
     error unknownVirtualAsset();
     error convexTokenMismatch();
+    error IncorrectInteractionValue(uint stakedValue, uint valueToWithdraw);
+
+    event Show(uint ts);
 
     function setUp() public {
         rollupProcessor = address(this);
@@ -38,13 +43,14 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         MINTER = IConvexDeposit(DEPOSIT).minter();
         _setUpInvalidPoolPids(48);
 
-
         // labels
         vm.label(address(this), "Test Contract");
         vm.label(address(msg.sender), "Test Contract Msg Sender");
         vm.label(DEPOSIT, "Deposit");
         vm.label(STAKER, "Staker Contract Address");
         vm.label(MINTER, "Minter");
+        vm.label(CRV_TOKEN, "Reward boosted CRV Token");
+        vm.label(CVX_TOKEN, "Reward CVX Token");
     }
 
 
@@ -340,6 +346,40 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         }
     }
 
+    function testUnidenticalStakedWithdrawnAmount() public {
+        uint64 withdrawalAmount = 10;
+        // deposit amount is greater than withdrawal amount -> can't close the interaction
+        uint depositAmount = withdrawalAmount + 1;
+        // deposit LpTokens first so the totalSupply of minted tokens match (no other workaround)
+        uint poolLength = IConvexDeposit(DEPOSIT).poolLength();
+
+        for (uint i=0; i < poolLength; i++) {
+            if (invalidPoolPids[i]) {
+                continue;
+            }
+            if (i != 112 && i != 1) {
+                continue;
+            }
+
+            _setUpBridge(i);
+                
+            // set up interaction
+            _deposit(depositAmount);
+            
+            vm.expectRevert(abi.encodeWithSelector(IncorrectInteractionValue.selector, depositAmount, withdrawalAmount));
+            (uint outputValueA, uint outputValueB, bool isAsync) = bridge.convert(
+                AztecTypes.AztecAsset(INTERACTION_NONCE, address(0), AztecTypes.AztecAssetType.VIRTUAL),
+                emptyAsset,
+                AztecTypes.AztecAsset(1, CURVE_LP_TOKEN, AztecTypes.AztecAssetType.ERC20),
+                emptyAsset,
+                withdrawalAmount,
+                INTERACTION_NONCE,
+                0,
+                address(11)
+            );
+        }
+    }
+
     function testWithdrawLpTokens(uint64 withdrawalAmount) public {
         vm.assume(withdrawalAmount > 1);
         // deposit LpTokens first so the totalSupply of minted tokens match (no other workaround)
@@ -371,8 +411,8 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
             assertEq(outputValueA, withdrawalAmount);
             assertEq(outputValueB, 0, "Output value B is not 0"); // I am not really returning these two, so it actually returns a default..
             assertTrue(!isAsync, "Bridge is in async mode which it shouldn't");
-            // (, bool interactionNonceExists) = bridge.interactions(INTERACTION_NONCE);
-            // assertFalse(interactionNonceExists, "Interaction Nonce still exists.");
+            (,,bool interactionNonceExists) = bridge.interactions(INTERACTION_NONCE);
+            assertFalse(interactionNonceExists, "Interaction Nonce still exists.");
             assertEq(IERC20(MINTER).balanceOf(address(bridge)), 0);
             assertEq(IERC20(CURVE_LP_TOKEN).balanceOf(address(bridge)), withdrawalAmount);
             IERC20(CURVE_LP_TOKEN).transferFrom(address(bridge), rollupProcessor, withdrawalAmount);
@@ -381,7 +421,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
     }
 
     function testWithdrawLpTokensWithRewards(uint64 withdrawalAmount) public {
-        vm.assume(withdrawalAmount > 1);
+        vm.assume(withdrawalAmount > 100000);
         // deposit LpTokens first so the totalSupply of minted tokens match (no other workaround)
         uint poolLength = IConvexDeposit(DEPOSIT).poolLength();
 
@@ -398,8 +438,14 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
             // set up an interaction
             _deposit(withdrawalAmount);
 
-            uint rewardsBefore = IERC20(MINTER).balanceOf(address(bridge));
+            
 
+            uint rewardsCRVBefore = IERC20(CRV_TOKEN).balanceOf(address(bridge));
+            uint rewardsCVXBefore = IERC20(CVX_TOKEN).balanceOf(address(bridge));
+
+            emit Show(block.timestamp);
+
+            skip(8 days);
             (uint outputValueA, uint outputValueB, bool isAsync) = bridge.convert(
                 AztecTypes.AztecAsset(INTERACTION_NONCE, address(0), AztecTypes.AztecAssetType.VIRTUAL),
                 emptyAsset,
@@ -411,20 +457,24 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
                 address(11)
             );
 
-            uint rewardsAfter = IERC20(MINTER).balanceOf(address(bridge));
+            uint rewardsCRVAfter = IERC20(CRV_TOKEN).balanceOf(address(bridge));
+            uint rewardsCVXAfter = IERC20(CVX_TOKEN).balanceOf(address(bridge));
 
             assertEq(outputValueA, withdrawalAmount);
             assertEq(outputValueB, 0, "Output value B is not 0"); // I am not really returning these two, so it actually returns a default..
             assertTrue(!isAsync, "Bridge is in async mode which it shouldn't");
-            assertGe(IERC20(CONVEX_TOKEN).balanceOf(address(bridge)), rewardsAfter - rewardsBefore);
-            // (, bool interactionNonceExists) = bridge.interactions(INTERACTION_NONCE);
-            // assertFalse(interactionNonceExists, "Interaction Nonce still exists.");
+            assertGt(rewardsCRVAfter, rewardsCRVBefore, "No CRV rewards");
+            assertGt(rewardsCVXAfter, rewardsCVXBefore, "No CVX rewards");
+            (,,bool interactionNonceExists) = bridge.interactions(INTERACTION_NONCE);
+            assertFalse(interactionNonceExists, "Interaction Nonce still exists.");
 
             assertEq(IERC20(CURVE_LP_TOKEN).balanceOf(address(bridge)), withdrawalAmount);
             IERC20(CURVE_LP_TOKEN).transferFrom(address(bridge), rollupProcessor, withdrawalAmount);
             assertEq(IERC20(CURVE_LP_TOKEN).balanceOf(rollupProcessor), withdrawalAmount);
         }
     }
+
+    
 
     /**
     @notice Mocking of Curve LP Token balance.
