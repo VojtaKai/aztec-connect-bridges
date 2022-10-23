@@ -26,16 +26,19 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
     uint private constant INTERACTION_NONCE = 2 ** 30;
 
+    uint[] private rewardsGreater;
+    uint[] private rewardsLesser;
+    uint[] private rewardsLesserOrGreater;
+
     ConvexStakingBridge private bridge;
 
     mapping(uint => bool) public invalidPoolPids;
 
-    error invalidAssetType();
-    error unknownVirtualAsset();
-    error convexTokenMismatch();
+    error InvalidAssetType();
+    error UnknownVirtualAsset();
     error IncorrectInteractionValue(uint stakedValue, uint valueToWithdraw);
 
-    event Show(uint ts);
+    event ShowIndices(uint[] rewardsPids);
 
     function setUp() public {
         rollupProcessor = address(this);
@@ -82,7 +85,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
         vm.label(address(bridge), "Bridge");
 
-        vm.expectRevert(invalidAssetType.selector);
+        vm.expectRevert(InvalidAssetType.selector);
         (uint outputValueA, uint outputValueB, bool isAsync) = bridge.convert{value: depositAmount}(
             AztecTypes.AztecAsset(1, address(0), AztecTypes.AztecAssetType.ETH),
             emptyAsset,
@@ -107,7 +110,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         vm.label(address(bridge), "Bridge");
         vm.label(CURVE_LP_TOKEN, "Curve LP Token Contract");
 
-        // make deposit and add 
+        // make deposit and create an interaction 
         _deposit(withdrawalAmount);
         
         vm.expectRevert(ErrorLib.InvalidOutputA.selector);
@@ -123,7 +126,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         );
     }
 
-    function testIvalidOutput2() public {
+    function testInvalidOutput2() public {
         bridge = new ConvexStakingBridge(rollupProcessor);
         uint withdrawalAmount = 10;
         address invalidLpToken = address(123);
@@ -174,7 +177,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         // make deposit and note down virtual asset.id (interaction nonce)
         _deposit(withdrawalAmount);
         
-        vm.expectRevert(invalidAssetType.selector);
+        vm.expectRevert(InvalidAssetType.selector);
         (uint outputValueA, uint outputValueB, bool isAsync) = bridge.convert(
             AztecTypes.AztecAsset(INTERACTION_NONCE, address(0), AztecTypes.AztecAssetType.VIRTUAL),
             emptyAsset,
@@ -204,7 +207,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         // make deposit and note down virtual asset.id (interaction nonce)
         _deposit(withdrawalAmount);
         
-        vm.expectRevert(unknownVirtualAsset.selector);
+        vm.expectRevert(UnknownVirtualAsset.selector);
         (uint outputValueA, uint outputValueB, bool isAsync) = bridge.convert(
             AztecTypes.AztecAsset(nonExistingInteractionNonce, address(0), AztecTypes.AztecAssetType.VIRTUAL),
             emptyAsset,
@@ -306,7 +309,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
                 continue;
             }
 
-            if (i != 112) {
+            if (i != 112 && i != 1) {
                 continue;
             }
 
@@ -382,7 +385,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
     function testWithdrawLpTokens(uint64 withdrawalAmount) public {
         vm.assume(withdrawalAmount > 1);
-        // deposit LpTokens first so the totalSupply of minted tokens match (no other workaround)
         uint poolLength = IConvexDeposit(DEPOSIT).poolLength();
 
         for (uint i=0; i < poolLength; i++) {
@@ -411,6 +413,8 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
             assertEq(outputValueA, withdrawalAmount);
             assertEq(outputValueB, 0, "Output value B is not 0"); // I am not really returning these two, so it actually returns a default..
             assertTrue(!isAsync, "Bridge is in async mode which it shouldn't");
+            assertEq(IERC20(CRV_TOKEN).balanceOf(address(bridge)), 0, "CRV Rewards must have been claimed");
+            assertEq(IERC20(CVX_TOKEN).balanceOf(address(bridge)), 0, "CVX Rewards must have been claimed");
             (,,bool interactionNonceExists) = bridge.interactions(INTERACTION_NONCE);
             assertFalse(interactionNonceExists, "Interaction Nonce still exists.");
             assertEq(IERC20(MINTER).balanceOf(address(bridge)), 0);
@@ -421,29 +425,27 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
     }
 
     function testWithdrawLpTokensWithRewards(uint64 withdrawalAmount) public {
-        vm.assume(withdrawalAmount > 100000);
+        vm.assume(withdrawalAmount > 401220753522760);
         // deposit LpTokens first so the totalSupply of minted tokens match (no other workaround)
         uint poolLength = IConvexDeposit(DEPOSIT).poolLength();
+
+        bool rewardsClaimedMoreThanOnce;
 
         for (uint i=0; i < poolLength; i++) {
             if (invalidPoolPids[i]) {
                 continue;
             }
-            if (i != 112) {
-                continue;
-            }
+            // if (i != 110 && i != 112) {
+            //     continue;
+            // }
 
             _setUpBridge(i);
                 
             // set up an interaction
             _deposit(withdrawalAmount);
 
-            
-
             uint rewardsCRVBefore = IERC20(CRV_TOKEN).balanceOf(address(bridge));
             uint rewardsCVXBefore = IERC20(CVX_TOKEN).balanceOf(address(bridge));
-
-            emit Show(block.timestamp);
 
             skip(8 days);
             (uint outputValueA, uint outputValueB, bool isAsync) = bridge.convert(
@@ -456,15 +458,25 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
                 1,
                 address(11)
             );
+            rewind(8 days);
 
             uint rewardsCRVAfter = IERC20(CRV_TOKEN).balanceOf(address(bridge));
             uint rewardsCVXAfter = IERC20(CVX_TOKEN).balanceOf(address(bridge));
 
+            if (rewardsCRVAfter > rewardsCRVBefore && rewardsCVXAfter > rewardsCVXBefore) {
+                rewardsGreater.push(i);
+                rewardsClaimedMoreThanOnce = true;
+            } else if (rewardsCRVAfter < rewardsCRVBefore && rewardsCVXAfter < rewardsCVXBefore) {
+                rewardsLesser.push(i);
+            } else {
+                rewardsLesserOrGreater.push(i);
+            }
+
             assertEq(outputValueA, withdrawalAmount);
             assertEq(outputValueB, 0, "Output value B is not 0"); // I am not really returning these two, so it actually returns a default..
             assertTrue(!isAsync, "Bridge is in async mode which it shouldn't");
-            assertGt(rewardsCRVAfter, rewardsCRVBefore, "No CRV rewards");
-            assertGt(rewardsCVXAfter, rewardsCVXBefore, "No CVX rewards");
+            assertGe(rewardsCRVAfter, rewardsCRVBefore, "No CRV rewards");
+            assertGe(rewardsCVXAfter, rewardsCVXBefore, "No CVX rewards");
             (,,bool interactionNonceExists) = bridge.interactions(INTERACTION_NONCE);
             assertFalse(interactionNonceExists, "Interaction Nonce still exists.");
 
@@ -472,14 +484,18 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
             IERC20(CURVE_LP_TOKEN).transferFrom(address(bridge), rollupProcessor, withdrawalAmount);
             assertEq(IERC20(CURVE_LP_TOKEN).balanceOf(rollupProcessor), withdrawalAmount);
         }
+        assertTrue(rewardsClaimedMoreThanOnce, "Rewards claimed properly not even once");
+        emit ShowIndices(rewardsGreater);
+        emit ShowIndices(rewardsLesser);
+        emit ShowIndices(rewardsLesserOrGreater);
     }
 
     
 
     /**
     @notice Mocking of Curve LP Token balance.
-    @notice Depositing Curve LP Tokens and their subsequent staking.  
-    @notice Minting of CSB Tokens.
+    @notice Depositing Curve LP Tokens.
+    @notice Sets up an interaction.
     @param depositAmount Number of Curve LP Tokens to stake.
     */
     function _deposit(uint depositAmount) internal {
@@ -501,7 +517,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         );
 
         assertEq(outputValueA, depositAmount);
-        assertEq(outputValueB, 0, "Output value B is not 0."); // I am not really returning these two, so it actually returns a default..
+        assertEq(outputValueB, 0, "Output value B is not 0.");
         assertTrue(!isAsync, "Bridge is in async mode which it shouldn't");
     }
 

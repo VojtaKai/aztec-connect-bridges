@@ -62,8 +62,8 @@ describe("convex staking bridge data", () => {
   // let cerc20Contract: Mockify<ICERC20>;
   // let erc20Contract: Mockify<IERC20>;
 
-  const instanceNonce = 10 ** 29 + 1;
-
+  const instanceNonce = 10 ** 29 + 1; // !!! THIS SHOULD BE VIRTUAL ASSET ID ONLY, HAS NOTHING TO DO WITH INSTANCE NONCE. THAT AZTEC HAS IT MATCHING IS SOMETHING ELSE. DEFINITELY LOOK INTO THE NAMING !!! this should be 2 ** 29 + asset.id 
+  const virtualAssetId = 2 ** 29 + 1
 //   let ethAsset: AztecAsset;
 //   let cethAsset: AztecAsset;
 //   let daiAsset: AztecAsset;
@@ -136,7 +136,7 @@ describe("convex staking bridge data", () => {
 
   })
 
-  it("should return correct expected output - withdrawing", async () => {
+  it.only("should return correct expected output - withdrawing", async () => {
     const withdrawValue = 10n
     // addresses
     const convexDepositAddr = "0xF403C135812408BFbE8713b5A23a04b3D48AAE31"

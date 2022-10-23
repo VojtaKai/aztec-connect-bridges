@@ -2,12 +2,10 @@
 
 ## What does the bridge do? Why build it?
 
-The bridge swaps `eth` to `stEth` using curve to get a staked eth derivative that earns a yield from staking rewards at the beaconchain. We build it to allow users to earn yield on their eth.
-
-The bridge stakes convex LP Token into Convex rewards contract and a users earns CVX (Convex tokens) and boosted CRV (Curve tokens) in exchange for Curve LP tokens. User earns extra Convex Tokens . On top of that, staking is not timely constrained and user can withdraw their Curve LP tokens any time.
+The bridge stakes convex LP Token into Convex rewards contract and a users earns CVX (Convex tokens) and boosted CRV (Curve tokens) in exchange for Curve LP tokens. On top of that, staking is not timely constrained and user can withdraw their Curve LP tokens any time.
 
 User gets boosted rewards without staking CRV token on Curve.
-
+At some pools user can earn some extra tokens.
 
 (that are given to you as a reward for providing liquidity to Curve LP pools) to 
 
@@ -24,6 +22,22 @@ Note: Convex Finance has its own governance token CVX which user earns as part o
 There are two flows of Convex staking bridge, namely deposits and withdraws.
 
 ![Convex flows](./ConvexStakingBridge.svg)
+
+## EXTRA not sure if useful, desc from my bridge
+* @notice A DefiBridge that stakes Curve LP Token into Convex Finance. Convex Finance transfers Curve LP Tokens 
+ * from bridge to a liquidity gauge. New Convex Tokens are minted and then staked (transfered) to CRV Rewards.
+ * Bridge mints a matching version of the staked Convex Tokens, CSB Tokens, and assignes their ownership to the RollUpProcessor.
+ * At unstaking, both - CSB Tokens and Convex Tokens - are burned and ownership of Curve LP Tokens is given back to the RollUpProcessor.
+
+    Staking: Curve LP Token is then placed into liquidity gauge by pool specific staker contract. 
+    New Convex Token is minted and then staked/deposited into rewardsContract.
+    Withdrawing of Curve LP Tokens goes in reversed order. First, the minted Convex Tokens will get burned.
+    If there is enough Curve LP tokens, tokens will be credited to the bridge. If this is not the case, 
+    the necessary rest of Curve LP Token amount will be withdrawn from pool's liquidity gauge contract 
+    and subsequently credited to the bridge and back to RollUpProcessor.
+
+    @notice Staking and unstaking of Curve LP Tokens via Convex Finance in a form of Convex Tokens.
+    @notice To be able to stake a token, you already need to own Curve LP Token from one of its pools.
 
 ### Deposit (Stake)
 
