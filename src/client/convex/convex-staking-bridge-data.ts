@@ -29,6 +29,8 @@ import {
   SolidityType,
   UnderlyingAsset,
 } from "../bridge-data";
+import { BigNumber } from "ethers";
+
 
 export interface IPoolInfo {
   poolPid: number,
@@ -45,22 +47,22 @@ interface IBridgeInteraction {
 
 export class ConvexBridgeData implements BridgeDataFieldGetters {
   bridgeAddress = "0x123456789";
-  lastPoolLength: Number = 0;
+  lastPoolLength: number = 0;
   pools: IPoolInfo[] = [];
   interactions: IBridgeInteraction[] = [];
 
   constructor(
     private ethersProvider: Web3Provider,
     private rollupProcessor: IRollupProcessor,
-    private convexBooster: IConvexDeposit,
+    private convexDeposit: IConvexDeposit,
   ) {}
 
-  static create(provider: EthereumProvider, rollupProcessor: EthAddress, convexBooster: EthAddress) {
+  static create(provider: EthereumProvider, rollupProcessor: EthAddress, convexDeposit: EthAddress) {
     const ethersProvider = createWeb3Provider(provider);
     return new ConvexBridgeData(
       ethersProvider,
       IRollupProcessor__factory.connect(rollupProcessor.toString(), ethersProvider),
-      IConvexDeposit__factory.connect(convexBooster.toString(), ethersProvider),
+      IConvexDeposit__factory.connect(convexDeposit.toString(), ethersProvider),
     );
   }
 
@@ -99,7 +101,6 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
 
     if (inputAssetA.assetType == AztecAssetType.ERC20 && outputAssetA.assetType == AztecAssetType.VIRTUAL) {
       selectedPool = this.pools.find(p => p.curveLpToken === inputAssetA.erc20Address.toString())
-      console.log('this.pools', this.pools)
       if (!selectedPool) {
         throw new Error("Invalid Input A")
       }
@@ -109,7 +110,7 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
 
 
       const balanceBefore = (await convexToken.balanceOf(curveRewards.address)).toBigInt()
-      await this.convexBooster.deposit(selectedPool.poolPid, inputValue, true)
+      await this.convexDeposit.deposit(selectedPool.poolPid, inputValue, true)
       const balanceAfter = (await convexToken.balanceOf(curveRewards.address)).toBigInt()
 
       this.interactions.push({
@@ -144,7 +145,7 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
       const balanceBefore = (await curveLpToken.balanceOf(this.bridgeAddress)).toBigInt()
 
       await curveRewards.withdraw(inputValue, claimRewards)
-      await this.convexBooster.withdraw(selectedPool.poolPid, inputValue)
+      await this.convexDeposit.withdraw(selectedPool.poolPid, inputValue)
 
       const balanceAfter = (await curveLpToken.balanceOf(this.bridgeAddress)).toBigInt()
 
@@ -155,10 +156,9 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
     }
   }
 
-  // convex token should be the yieldAsset
   async getAPR(yieldAsset: AztecAsset): Promise<number> {
     // Not taking into account how the deposited funds will change the yield
-    // The approximate number of blocks per year that is assumed by the interest rate model
+    // The approximate number of blocks per year was taken from https://ycharts.com/ in October, 2022
     await this.loadPools()
 
     const curveRewardsAddress = this.pools.find(p => p.convexToken === yieldAsset.erc20Address.toString())?.curveRewards
@@ -176,7 +176,6 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
     return rewardRatePerBlock * blocksPerYear / totalSupply * (10 ** 2)
   }
 
-  // underlying je curve lp token
   async getMarketSize(
     underlyingToken: AztecAsset,
     inputAssetB: AztecAsset,
@@ -192,7 +191,7 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
       throw new Error("Invalid Input A")
     }
 
-    const curveRewards = ICurveRewards__factory.connect(selectedPool.curveRewards, this.convexBooster.provider)
+    const curveRewards = ICurveRewards__factory.connect(selectedPool.curveRewards, this.convexDeposit.provider)
     const tokenSupply = await curveRewards.totalSupply()
     return [{ assetId: underlyingToken.id, value: tokenSupply.toBigInt()}]
   }
@@ -254,11 +253,11 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
   }
 
   private async loadPools() {
-    const currentPoolLength = Number(await this.convexBooster.poolLength());
+    const currentPoolLength = (await this.convexDeposit.poolLength()).toNumber();
       if (currentPoolLength !== this.lastPoolLength) {
-        let i = 0;
+        let i = this.lastPoolLength;
         while (i < currentPoolLength) {
-          const poolInfo = await this.convexBooster.poolInfo(i);
+          const poolInfo = await this.convexDeposit.poolInfo(BigNumber.from(i));
           this.pools.push({
             poolPid: i,
             curveLpToken: poolInfo[0],
