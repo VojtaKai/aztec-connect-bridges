@@ -307,10 +307,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
                 continue;
             }
 
-            if (i != 112 && i != 1) {
-                continue;
-            }
-
             _setUpBridge(i);
 
             _deposit(depositAmount);
@@ -330,7 +326,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
             // Mock initial balance of CURVE LP Token for Rollup Processor
             deal(CURVE_LP_TOKEN, rollupProcessor, depositAmount);
-            // transfer CURVE LP Tokens from RollUpProcessor to the bridge
+            // Transfer CURVE LP Tokens from RollUpProcessor to the bridge
             IERC20(CURVE_LP_TOKEN).transfer(address(bridge), depositAmount);
 
             vm.expectRevert(ErrorLib.InvalidInputAmount.selector);
@@ -356,9 +352,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
         for (uint i=0; i < poolLength; i++) {
             if (invalidPoolPids[i]) {
-                continue;
-            }
-            if (i != 112 && i != 1) {
                 continue;
             }
 
@@ -387,9 +380,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
         for (uint i=0; i < poolLength; i++) {
             if (invalidPoolPids[i]) {
-                continue;
-            }
-            if (i != 112 && i != 1) {
                 continue;
             }
 
@@ -431,9 +421,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
         for (uint i=0; i < poolLength; i++) {
             if (invalidPoolPids[i]) {
-                continue;
-            }
-            if (i != 110 && i != 112) {
                 continue;
             }
 
