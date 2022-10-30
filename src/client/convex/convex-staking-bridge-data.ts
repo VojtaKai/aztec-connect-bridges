@@ -226,7 +226,7 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
       assetType: AztecAssetType.ERC20,
     };
 
-    // should withdraw, if 
+    // withdraw
     const underlyingAssetAmount = await this.getExpectedOutput(virtualAsset, emptyAsset, underlyingAsset, emptyAsset, 0, amount)
 
     const curveLpToken = IERC20Metadata__factory.connect(underlyingAsset.erc20Address.toString(), this.ethersProvider)

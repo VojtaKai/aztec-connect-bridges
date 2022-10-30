@@ -67,7 +67,29 @@ contract ConvexStakingBridge is BridgeBase {
 
     constructor(address _rollupProcessor) BridgeBase(_rollupProcessor) {
         _loadPools();
+
+        uint[] memory criterias = new uint[](2* lastPoolLength);
+        uint32[] memory gasUsage = new uint32[](2 * lastPoolLength);
+        uint32[] memory minGasPerMinute = new uint32[](2 * lastPoolLength);
+
+        for (uint i = 0; i < lastPoolLength; i++) {
+            (address curveLpToken,,,,,) = DEPOSIT.poolInfo(i);
+            criterias[i] = uint(keccak256(abi.encodePacked(curveLpToken, address(0))));
+            gasUsage[i] = 1000000;
+            minGasPerMinute[i] = 690;
+
+            criterias[lastPoolLength + i] = uint(keccak256(abi.encodePacked(address(0), curveLpToken)));
+            gasUsage[lastPoolLength + i] = 375000;
+            minGasPerMinute[lastPoolLength + i] = 260;
+        }
+
+        SUBSIDY.setGasUsageAndMinGasPerMinute(criterias, gasUsage, minGasPerMinute);
     }
+
+    /**
+    @notice function so the bridge can receive ether. Used for subsidy.
+    */
+    receive() external payable {}
 
     /**
     @notice Stake and unstake Curve LP tokens through Convex Finance Deposit contract anytime.
@@ -78,16 +100,17 @@ contract ConvexStakingBridge is BridgeBase {
     @param _totalInputValue Total number of Curve LP tokens to deposit / withdraw
     @param _auxData Data to claim staking rewards
     @param outputValueA Number of Curve LP tokens staked / unstaked
+    @param _rollupBeneficiary Address of the contract that receives subsidy
     */ 
     function convert(
         AztecTypes.AztecAsset calldata _inputAssetA,
-        AztecTypes.AztecAsset calldata, 
+        AztecTypes.AztecAsset calldata _inputAssetB, 
         AztecTypes.AztecAsset calldata _outputAssetA,
-        AztecTypes.AztecAsset calldata,
+        AztecTypes.AztecAsset calldata _outputAssetB,
         uint _totalInputValue,
         uint,
         uint64 _auxData,
-        address
+        address _rollupBeneficiary
     ) 
     external
     payable 
@@ -153,6 +176,12 @@ contract ConvexStakingBridge is BridgeBase {
         } else {
              revert InvalidAssetType();
         }
+
+        // Pay out subsidy to the rollupBeneficiary
+        SUBSIDY.claimSubsidy(
+            computeCriteria(_inputAssetA, _inputAssetB, _outputAssetA, _outputAssetB, _auxData),
+            _rollupBeneficiary
+        );
     }
 
     /** 
@@ -200,5 +229,20 @@ contract ConvexStakingBridge is BridgeBase {
         CURVE_LP_TOKEN = ICurveLpToken(selectedPool.curveLpToken);
         CURVE_REWARDS = ICurveRewards(selectedPool.curveRewards);
     }
-    
+
+    /**
+     * @notice Computes the criteria that is passed when claiming subsidy.
+     * @param _inputAssetA The input asset
+     * @param _outputAssetA The output asset
+     * @return The criteria
+     */
+    function computeCriteria(
+        AztecTypes.AztecAsset calldata _inputAssetA,
+        AztecTypes.AztecAsset calldata,
+        AztecTypes.AztecAsset calldata _outputAssetA,
+        AztecTypes.AztecAsset calldata,
+        uint64
+    ) public view override(BridgeBase) returns (uint256) {
+        return uint256(keccak256(abi.encodePacked(_inputAssetA.erc20Address, _outputAssetA.erc20Address)));
+    } 
 }
