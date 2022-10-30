@@ -27,12 +27,12 @@ contract ConvexStakingBridgeDeployment is BaseDeployment {
         uint256 addressId = listBridge(bridge, 1000000);
 
         // list every single pool curve lp token
-        listAllAssets();
+        _listAllAssets();
 
         emit log_named_uint("Convex staking bridge address id", addressId);
     }
 
-    function listAllAssets() internal {
+    function _listAllAssets() internal {
         uint poolLength = DEPOSIT.poolLength();
         for (uint i=0; i < poolLength; i++) {
             (address curveLpToken,,,,,) = DEPOSIT.poolInfo(i);

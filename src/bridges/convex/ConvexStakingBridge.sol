@@ -33,14 +33,6 @@ contract ConvexStakingBridge is BridgeBase {
     using SafeERC20 for IConvexDeposit;
     using SafeERC20 for ICurveLpToken;
 
-    // Contracts
-    IConvexDeposit public constant DEPOSIT = IConvexDeposit(0xF403C135812408BFbE8713b5A23a04b3D48AAE31);
-    ICurveLpToken public CURVE_LP_TOKEN;
-    ICurveRewards public CURVE_REWARDS;
-    
-    // Pools
-    uint public lastPoolLength;
-
     struct PoolInfo {
         uint poolPid;
         address curveLpToken;
@@ -48,15 +40,24 @@ contract ConvexStakingBridge is BridgeBase {
         address curveRewards;
         bool exists;
     }
-    mapping(address => PoolInfo) public pools;
 
-    // Interactions - represent deposit action, stored for withdrawal
     struct Interaction {
         uint valueStaked;
         address representedConvexToken;
         bool exists;
     }
 
+    // Contracts
+    IConvexDeposit public constant DEPOSIT = IConvexDeposit(0xF403C135812408BFbE8713b5A23a04b3D48AAE31);
+    ICurveLpToken public curveLpToken;
+    ICurveRewards public curveRewards;
+    
+    // Pools
+    uint public lastPoolLength;
+
+    mapping(address => PoolInfo) public pools;
+
+    // Interactions - represent deposit action, stored for withdrawal
     mapping(uint => Interaction) public interactions;
 
     // Errors
@@ -93,7 +94,7 @@ contract ConvexStakingBridge is BridgeBase {
 
     /**
     @notice Stake and unstake Curve LP tokens through Convex Finance Deposit contract anytime.
-    @notice Convert rate between Curve LP Token and corresponding Convex LP Token is 1:1
+    @notice Convert rate between Curve LP token and corresponding Convex LP token is 1:1
     @notice Stake == Deposit, Unstake == Withdraw
     @param _inputAssetA Curve LP token (staking), virtual asset (unstaking)
     @param _outputAssetA Virtual asset (staking), Curve LP token (unstaking)
@@ -141,13 +142,13 @@ contract ConvexStakingBridge is BridgeBase {
             _setTokens(selectedPool);
 
             // approvals
-            CURVE_LP_TOKEN.approve(address(DEPOSIT), _totalInputValue);
+            curveLpToken.approve(address(DEPOSIT), _totalInputValue);
 
-            uint startCurveRewards = CURVE_REWARDS.balanceOf(address(this));
+            uint startCurveRewards = curveRewards.balanceOf(address(this));
 
             DEPOSIT.deposit(selectedPool.poolPid, _totalInputValue, true);
 
-            uint endCurveRewards = CURVE_REWARDS.balanceOf(address(this)); 
+            uint endCurveRewards = curveRewards.balanceOf(address(this)); 
 
             outputValueA = (endCurveRewards - startCurveRewards);
 
@@ -187,23 +188,23 @@ contract ConvexStakingBridge is BridgeBase {
     /** 
     @notice Internal function to withdraw Curve LP tokens
     */
-    function _withdraw(AztecTypes.AztecAsset memory inputAssetA, uint totalInputValue, uint64 auxData, PoolInfo memory selectedPool) internal returns(uint outputValueA) {
+    function _withdraw(AztecTypes.AztecAsset memory _inputAssetA, uint _totalInputValue, uint64 _auxData, PoolInfo memory _selectedPool) internal returns(uint outputValueA) {
         // approvals
-        CURVE_LP_TOKEN.approve(ROLLUP_PROCESSOR, totalInputValue);
+        curveLpToken.approve(ROLLUP_PROCESSOR, _totalInputValue);
 
-        uint startCurveLpTokens = CURVE_LP_TOKEN.balanceOf(address(this));
+        uint startCurveLpTokens = curveLpToken.balanceOf(address(this));
 
         // transfer CONVEX tokens from CrvRewards back to the bridge
-        bool claimRewards = auxData == 1; // if passed anything but 1, rewards will not be claimed
-        CURVE_REWARDS.withdraw(totalInputValue, claimRewards);
+        bool claimRewards = _auxData == 1; // if passed anything but 1, rewards will not be claimed
+        curveRewards.withdraw(_totalInputValue, claimRewards);
         
-        DEPOSIT.withdraw(selectedPool.poolPid, totalInputValue);
+        DEPOSIT.withdraw(_selectedPool.poolPid, _totalInputValue);
 
-        uint endCurveLpTokens = CURVE_LP_TOKEN.balanceOf(address(this));
+        uint endCurveLpTokens = curveLpToken.balanceOf(address(this));
 
         outputValueA = (endCurveLpTokens - startCurveLpTokens);
 
-        delete interactions[inputAssetA.id];
+        delete interactions[_inputAssetA.id];
     }
 
     /**
@@ -225,9 +226,9 @@ contract ConvexStakingBridge is BridgeBase {
     /** 
     @notice Sets up pool specific tokens.
     */
-    function _setTokens(PoolInfo memory selectedPool) internal {
-        CURVE_LP_TOKEN = ICurveLpToken(selectedPool.curveLpToken);
-        CURVE_REWARDS = ICurveRewards(selectedPool.curveRewards);
+    function _setTokens(PoolInfo memory _selectedPool) internal {
+        curveLpToken = ICurveLpToken(_selectedPool.curveLpToken);
+        curveRewards = ICurveRewards(_selectedPool.curveRewards);
     }
 
     /**
