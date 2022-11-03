@@ -217,59 +217,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         );
     }
 
-    function testInteractionPoolMismatch() public {
-        bridge = new ConvexStakingBridge(rollupProcessor);
-        uint withdrawalAmount = 10;
-        uint lastPoolPid = IConvexDeposit(DEPOSIT).poolLength() - 1;
-        uint changedPoolPid = lastPoolPid - 1;
-        
-        (curveLpToken,,,,,) = IConvexDeposit(DEPOSIT).poolInfo(lastPoolPid);
-
-        // labels
-        vm.label(address(bridge), "Bridge");
-        vm.label(curveLpToken, "Curve LP Token Contract");
-
-        // make deposit and note down virtual asset.id (interaction nonce)
-        // make deposit for a pool at index `lastPoolPid`
-        _deposit(withdrawalAmount);
-
-        // order of pools or contracts within them might have changed
-        (curveLpToken,,,,,) = IConvexDeposit(DEPOSIT).poolInfo(changedPoolPid);
-        vm.label(curveLpToken, "Changed Curve LP Token Contract");
-
-        // START - represents valid deposit in another pool
-        deal(curveLpToken, rollupProcessor, withdrawalAmount);
-        IERC20(curveLpToken).transfer(address(bridge), withdrawalAmount);
-
-        uint outputValueA;
-        uint outputValueB;
-        bool isAsync;
-
-        (outputValueA, outputValueB, isAsync) = bridge.convert(
-            AztecTypes.AztecAsset(1, curveLpToken, AztecTypes.AztecAssetType.ERC20),
-            emptyAsset,
-            AztecTypes.AztecAsset(INTERACTION_NONCE - 10, address(0), AztecTypes.AztecAssetType.VIRTUAL),
-            emptyAsset,
-            withdrawalAmount,
-            INTERACTION_NONCE - 10,
-            0,
-            BENEFICIARY
-        );
-        // END - represents valid deposit in another pool
-
-        vm.expectRevert(ErrorLib.InvalidOutputA.selector);
-        (outputValueA, outputValueB, isAsync) = bridge.convert(
-            AztecTypes.AztecAsset(INTERACTION_NONCE, address(0), AztecTypes.AztecAssetType.VIRTUAL),
-            emptyAsset,
-            AztecTypes.AztecAsset(1, curveLpToken, AztecTypes.AztecAssetType.ERC20),
-            emptyAsset,
-            withdrawalAmount,
-            INTERACTION_NONCE,
-            0,
-            BENEFICIARY
-        );
-    }
-
     function testConvertInvalidCaller() public {
         bridge = new ConvexStakingBridge(rollupProcessor);
         address invalidCaller = address(123);
@@ -305,9 +252,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
                 continue;
             }
 
-            if (i != 112 && i != 1) {
-                continue;
-            }
 
             _setUpBridge(i);
 
@@ -322,9 +266,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
         for (uint i=0; i < poolLength; i++) {
             if (invalidPoolPids[i]) {
-                continue;
-            }
-            if (i != 112 && i != 1) {
                 continue;
             }
 
@@ -349,10 +290,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
             if (invalidPoolPids[i]) {
                 continue;
             }
-
-            // if (i != 112 && i != 1) {
-            //     continue;
-            // }
 
             _setUpBridge(i);
 
@@ -387,10 +324,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
                 continue;
             }
 
-            if (i != 112 && i != 1) {
-                continue;
-            }
-
             _setUpBridge(i);
                 
             // set up interaction
@@ -419,10 +352,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
                 continue;
             }
 
-            if (i != 112 && i != 1) {
-                continue;
-            }
-
             _setUpBridge(i);
                 
             // set up interaction
@@ -439,7 +368,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
                 BENEFICIARY
             );
             assertEq(outputValueA, _withdrawalAmount);
-            assertEq(outputValueB, 0, "Output value B is not 0"); // I am not really returning these two, so it actually returns a default..
+            assertEq(outputValueB, 0, "Output value B is not 0");
             assertTrue(!isAsync, "Bridge is in async mode which it shouldn't");
             assertEq(IERC20(CRV_TOKEN).balanceOf(address(bridge)), 0, "CRV Rewards must have been claimed");
             assertEq(IERC20(CVX_TOKEN).balanceOf(address(bridge)), 0, "CVX Rewards must have been claimed");
@@ -461,10 +390,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
         for (uint i=0; i < poolLength; i++) {
             if (invalidPoolPids[i]) {
-                continue;
-            }
-
-            if (i != 112 && i != 1) {
                 continue;
             }
 
@@ -497,7 +422,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
             }
 
             assertEq(outputValueA, _withdrawalAmount);
-            assertEq(outputValueB, 0, "Output value B is not 0"); // I am not really returning these two, so it actually returns a default..
+            assertEq(outputValueB, 0, "Output value B is not 0");
             assertTrue(!isAsync, "Bridge is in async mode which it shouldn't");
             (,,bool interactionNonceExists) = bridge.interactions(INTERACTION_NONCE);
             assertFalse(interactionNonceExists, "Interaction Nonce still exists.");
@@ -507,7 +432,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
             assertEq(IERC20(curveLpToken).balanceOf(rollupProcessor), _withdrawalAmount);
         }
         assertGt(rewardsGreater.length, 0);
-        delete rewardsGreater; // clear array after every run
     }
 
     function testWithdrawLpTokensClaimSubsidy(uint64 _withdrawalAmount) public {
@@ -516,9 +440,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
         for (uint i=0; i < poolLength; i++) {
             if (invalidPoolPids[i]) {
-                continue;
-            }
-            if (i != 112 && i != 1) {
                 continue;
             }
 
@@ -547,7 +468,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
             rewind(2 days);
 
             assertEq(outputValueA, _withdrawalAmount);
-            assertEq(outputValueB, 0, "Output value B is not 0"); // I am not really returning these two, so it actually returns a default..
+            assertEq(outputValueB, 0, "Output value B is not 0");
             assertTrue(!isAsync, "Bridge is in async mode which it shouldn't");
             assertEq(IERC20(CRV_TOKEN).balanceOf(address(bridge)), 0, "CRV Rewards must have been claimed");
             assertEq(IERC20(CVX_TOKEN).balanceOf(address(bridge)), 0, "CVX Rewards must have been claimed");
@@ -591,7 +512,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
             BENEFICIARY
         );
 
-        assertEq(outputValueA, depositAmount);
+        assertEq(outputValueA, _depositAmount);
         assertEq(outputValueB, 0, "Output value B is not 0.");
         assertTrue(!isAsync, "Bridge is in async mode which it shouldn't");
     }

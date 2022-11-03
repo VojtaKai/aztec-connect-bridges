@@ -201,7 +201,7 @@ describe("convex staking bridge data", () => {
 
     const expectedAPR = await convexStakingBridge.getAPR(convexToken)
 
-    expect(expectedAPR).toBe(1.068273052373552)
+    expect(expectedAPR).toBe(12.941501924435627)
 
   })
 

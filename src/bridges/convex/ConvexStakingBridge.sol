@@ -17,7 +17,7 @@ import {ICurveRewards} from "../../interfaces/convex/ICurveRewards.sol";
 
 
 /**
- @notice A DefiBridge that allows Convex Finance to stake Curve LP tokens on our behalf and earn boosted CRV 
+ @notice A DefiBridge that allows Convex Finance to stake Curve LP tokens and earn boosted CRV 
  without locking them in for an extended period of time. Plus earning CVX and possibly other rewards. 
  @notice Staked tokens can be withdrawn (unstaked) any time.
  @dev Convex Finance mints pool specific Convex LP token, however, not for the staking user (the bridge) directly. 

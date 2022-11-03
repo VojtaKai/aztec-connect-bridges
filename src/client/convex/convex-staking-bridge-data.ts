@@ -167,13 +167,13 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
       throw new Error("Invalid yield asset")
     }
 
-    const blocksPerYear = 7132 * 365;
+    const secondsInYear = 3600 * 24 * 365;
     const curveRewards = ICurveRewards__factory.connect(curveRewardsAddress, this.ethersProvider);
     
     const totalSupply = Number(await curveRewards.totalSupply());
-    const rewardRatePerBlock = Number(await curveRewards.rewardRate());
+    const rewardRatePerSecond = Number(await curveRewards.rewardRate());
 
-    return rewardRatePerBlock * blocksPerYear / totalSupply * (10 ** 2)
+    return rewardRatePerSecond * secondsInYear / totalSupply * (10 ** 2)
   }
 
   async getMarketSize(
