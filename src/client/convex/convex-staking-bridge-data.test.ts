@@ -3,8 +3,8 @@ import { BigNumber } from "ethers";
 import {
     IERC20Metadata,
     IERC20Metadata__factory,
-    IConvexDeposit__factory,
-    IConvexDeposit,
+    IConvexBooster__factory,
+    IConvexBooster,
     IConvexToken,
     IConvexToken__factory,
     ICurveLpToken,
@@ -24,7 +24,7 @@ type Mockify<T> = {
 };
 
 describe("convex staking bridge data", () => {
-  let convexDepositMocked: Mockify<IConvexDeposit>;
+  let boosterMocker: Mockify<IConvexBooster>;
   let convexLpTokenMocked: Mockify<IConvexToken>;
   let curveLpTokenMocked: Mockify<ICurveLpToken>;
   let curveRewardsMocked: Mockify<ICurveRewards>;
@@ -70,8 +70,8 @@ describe("convex staking bridge data", () => {
     const balanceBefore = 0n
 
     // Mocks
-    convexDepositMocked = {
-      ...convexDepositMocked,
+    boosterMocker = {
+      ...boosterMocker,
       poolLength: jest.fn().mockResolvedValue(BigNumber.from(2)),
       poolInfo: jest.fn().mockResolvedValueOnce([curveLpToken0, convexToken0, "", crvRewards0, "", ""]).mockResolvedValueOnce([curveLpToken1, convexToken1, "", crvRewards1, "", ""]),
       deposit: jest.fn().mockResolvedValue(true)
@@ -82,7 +82,7 @@ describe("convex staking bridge data", () => {
       balanceOf: jest.fn().mockResolvedValueOnce(BigNumber.from(balanceBefore)).mockResolvedValueOnce(BigNumber.from(inputValue))
     }
 
-    IConvexDeposit__factory.connect = () => convexDepositMocked as IConvexDeposit
+    IConvexBooster__factory.connect = () => boosterMocker as IConvexBooster
     IConvexToken__factory.connect = () => convexLpTokenMocked as IConvexToken
 
     // Bridge
@@ -101,8 +101,8 @@ describe("convex staking bridge data", () => {
     const balanceBefore = 0n
 
     // Mocks
-    convexDepositMocked = {
-      ...convexDepositMocked,
+    boosterMocker = {
+      ...boosterMocker,
       poolLength: jest.fn().mockResolvedValue(BigNumber.from(2)),
       poolInfo: jest.fn().mockResolvedValueOnce([curveLpToken0, convexToken0, "", crvRewards0, "", ""]).mockResolvedValueOnce([curveLpToken1, convexToken1, "", crvRewards1, "", ""]),
       withdraw: jest.fn().mockResolvedValue(true)
@@ -118,7 +118,7 @@ describe("convex staking bridge data", () => {
       balanceOf: jest.fn().mockResolvedValueOnce(BigNumber.from(balanceBefore)).mockResolvedValueOnce(BigNumber.from(withdrawValue))
     }
 
-    IConvexDeposit__factory.connect = () => convexDepositMocked as IConvexDeposit
+    IConvexBooster__factory.connect = () => boosterMocker as IConvexBooster
     ICurveRewards__factory.connect = () => curveRewardsMocked as ICurveRewards
     ICurveLpToken__factory.connect = () => curveLpTokenMocked as ICurveLpToken
     
@@ -144,14 +144,14 @@ describe("convex staking bridge data", () => {
     const valueStaked = withdrawValue + 1n
 
     // Mocks
-    convexDepositMocked = {
-      ...convexDepositMocked,
+    boosterMocker = {
+      ...boosterMocker,
       poolLength: jest.fn().mockResolvedValue(BigNumber.from(2)),
       poolInfo: jest.fn().mockResolvedValueOnce([curveLpToken0, convexToken0, "", crvRewards0, "", ""]).mockResolvedValueOnce([curveLpToken1, convexToken1, "", crvRewards1, "", ""]),
       withdraw: jest.fn().mockResolvedValue(true)
     }
 
-    IConvexDeposit__factory.connect = () => convexDepositMocked as IConvexDeposit
+    IConvexBooster__factory.connect = () => boosterMocker as IConvexBooster
 
     // Bridge
     const convexStakingBridge = ConvexBridgeData.create({} as any, EthAddress.random(), EthAddress.fromString(convexDepositAddr))
@@ -173,8 +173,8 @@ describe("convex staking bridge data", () => {
     const rewardRate = BigNumber.from("9695446547950370")
 
     // Mocks
-    convexDepositMocked = {
-      ...convexDepositMocked,
+    boosterMocker = {
+      ...boosterMocker,
       poolLength: jest.fn().mockResolvedValue(BigNumber.from(2)),
       poolInfo: jest.fn().mockResolvedValueOnce([curveLpToken0, convexToken0, "", crvRewards0, "", ""]).mockResolvedValueOnce([curveLpToken1, convexToken1, "", crvRewards1, "", ""]),
     }
@@ -185,7 +185,7 @@ describe("convex staking bridge data", () => {
       rewardRate: jest.fn().mockResolvedValueOnce(rewardRate)
     }
 
-    IConvexDeposit__factory.connect = () => convexDepositMocked as IConvexDeposit
+    IConvexBooster__factory.connect = () => boosterMocker as IConvexBooster
     ICurveRewards__factory.connect = () => curveRewardsMocked as ICurveRewards
 
 
@@ -209,8 +209,8 @@ describe("convex staking bridge data", () => {
     const totalSupply = BigNumber.from(1e18.toString())
 
     // Mocks
-    convexDepositMocked = {
-      ...convexDepositMocked,
+    boosterMocker = {
+      ...boosterMocker,
       poolLength: jest.fn().mockResolvedValue(BigNumber.from(2)),
       poolInfo: jest.fn().mockResolvedValueOnce([curveLpToken0, convexToken0, "", crvRewards0, "", ""]).mockResolvedValueOnce([curveLpToken1, convexToken1, "", crvRewards1, "", ""]),
     }
@@ -220,7 +220,7 @@ describe("convex staking bridge data", () => {
       totalSupply: jest.fn().mockResolvedValueOnce(totalSupply),
     }
 
-    IConvexDeposit__factory.connect = () => convexDepositMocked as IConvexDeposit
+    IConvexBooster__factory.connect = () => boosterMocker as IConvexBooster
     ICurveRewards__factory.connect = () => curveRewardsMocked as ICurveRewards
 
     // Bridge
@@ -246,8 +246,8 @@ describe("convex staking bridge data", () => {
     const balanceBefore = 0n
 
     // Mocks
-    convexDepositMocked = {
-      ...convexDepositMocked,
+    boosterMocker = {
+      ...boosterMocker,
       poolLength: jest.fn().mockResolvedValue(BigNumber.from(2)),
       poolInfo: jest.fn().mockResolvedValueOnce([curveLpToken0, convexToken0, "", crvRewards0, "", ""]).mockResolvedValueOnce([curveLpToken1, convexToken1, "", crvRewards1, "", ""]),
       withdraw: jest.fn().mockResolvedValue(true)
@@ -270,7 +270,7 @@ describe("convex staking bridge data", () => {
       decimals: jest.fn().mockResolvedValueOnce(underlyingAssetDecimals),
     }
 
-    IConvexDeposit__factory.connect = () => convexDepositMocked as IConvexDeposit
+    IConvexBooster__factory.connect = () => boosterMocker as IConvexBooster
     ICurveRewards__factory.connect = () => curveRewardsMocked as ICurveRewards
     ICurveLpToken__factory.connect = () => curveLpTokenMocked as ICurveLpToken
     IERC20Metadata__factory.connect = () => ERC20Metadata as IERC20Metadata

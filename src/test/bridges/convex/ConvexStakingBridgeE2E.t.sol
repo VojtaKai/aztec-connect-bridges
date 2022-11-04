@@ -9,13 +9,13 @@ import {BridgeTestBase} from "./../../aztec/base/BridgeTestBase.sol";
 import {ErrorLib} from "../../../bridges/base/ErrorLib.sol";
 
 import {ConvexStakingBridge} from "../../../bridges/convex/ConvexStakingBridge.sol";
-import {IConvexDeposit} from "../../../interfaces/convex/IConvexDeposit.sol";
+import {IConvexBooster} from "../../../interfaces/convex/IConvexBooster.sol";
 
 
 contract ConvexStakingBridgeE2ETest is BridgeTestBase {
     address private curveLpToken;
     address private convexLpToken;
-    address private constant DEPOSIT = 0xF403C135812408BFbE8713b5A23a04b3D48AAE31;
+    address private constant BOOSTER = 0xF403C135812408BFbE8713b5A23a04b3D48AAE31;
     address private staker;
     address private gauge;
     address private stash;
@@ -38,14 +38,14 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
     event BridgeCallData(uint bridgeCallData);
 
     function setUp() public {
-        staker = IConvexDeposit(DEPOSIT).staker();
+        staker = IConvexBooster(BOOSTER).staker();
         _setUpInvalidPoolPids(48);
 
         // labels
         vm.label(address(ROLLUP_PROCESSOR), "Rollup Processor");
         vm.label(address(this), "E2E Test Contract");
         vm.label(msg.sender, "MSG sender");
-        vm.label(DEPOSIT, "Deposit");
+        vm.label(BOOSTER, "Booster");
         vm.label(staker, "Staker Contract Address");
         vm.label(BENEFICIARY, "Beneficiary");
     }
@@ -61,14 +61,10 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
     function testStakeWithdrawFlow(uint96 _depositAmount) public {
         vm.assume(_depositAmount > 1);
 
-        uint poolLength = IConvexDeposit(DEPOSIT).poolLength();
+        uint poolLength = IConvexBooster(BOOSTER).poolLength();
         uint j = 0;
         for (uint i=0; i < poolLength; i++) {
             if (invalidPoolPids[i]) {
-                continue;
-            }
-
-            if (i != 112 && i != 1 && i != 110) {
                 continue;
             }
 
@@ -170,7 +166,7 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
 
     function _setUpBridge(uint _poolPid) internal {
         bridge = new ConvexStakingBridge(address(ROLLUP_PROCESSOR));
-        (curveLpToken, convexLpToken, gauge, crvRewards, stash,) = IConvexDeposit(DEPOSIT).poolInfo(_poolPid);
+        (curveLpToken, convexLpToken, gauge, crvRewards, stash,) = IConvexBooster(BOOSTER).poolInfo(_poolPid);
         
         // labels
         vm.label(address(bridge), "Bridge");

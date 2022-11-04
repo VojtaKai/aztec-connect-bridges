@@ -5,10 +5,10 @@ pragma solidity >=0.8.4;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {BaseDeployment} from "../base/BaseDeployment.s.sol";
 import {ConvexStakingBridge} from "../../bridges/convex/ConvexStakingBridge.sol";
-import {IConvexDeposit} from "../../interfaces/convex/IConvexDeposit.sol";
+import {IConvexBooster} from "../../interfaces/convex/IConvexBooster.sol";
 
 contract ConvexStakingBridgeDeployment is BaseDeployment {
-    IConvexDeposit public constant DEPOSIT = IConvexDeposit(0xF403C135812408BFbE8713b5A23a04b3D48AAE31);
+    IConvexBooster public constant BOOSTER = IConvexBooster(0xF403C135812408BFbE8713b5A23a04b3D48AAE31);
 
     function deploy() public returns (address) {
         emit log("Deploying Convex staking bridge");
@@ -16,8 +16,6 @@ contract ConvexStakingBridgeDeployment is BaseDeployment {
         vm.broadcast();
         ConvexStakingBridge bridge = new ConvexStakingBridge(ROLLUP_PROCESSOR);
         emit log_named_address("Convex staking bridge deployed to", address(bridge));
-
-        // no preapprove of anything necessary
 
         return address(bridge);
     }
@@ -33,9 +31,9 @@ contract ConvexStakingBridgeDeployment is BaseDeployment {
     }
 
     function _listAllAssets() internal {
-        uint poolLength = DEPOSIT.poolLength();
+        uint poolLength = BOOSTER.poolLength();
         for (uint i=0; i < poolLength; i++) {
-            (address curveLpToken,,,,,) = DEPOSIT.poolInfo(i);
+            (address curveLpToken,,,,,) = BOOSTER.poolInfo(i);
             listAsset(curveLpToken, 100000);
         }
     }

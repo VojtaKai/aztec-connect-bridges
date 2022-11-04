@@ -8,12 +8,12 @@ import {BridgeTestBase} from "./../../aztec/base/BridgeTestBase.sol";
 import {ConvexStakingBridge} from "../../../bridges/convex/ConvexStakingBridge.sol";
 import {AztecTypes} from "../../../aztec/libraries/AztecTypes.sol";
 import {ErrorLib} from "../../../bridges/base/ErrorLib.sol";
-import {IConvexDeposit} from "../../../interfaces/convex/IConvexDeposit.sol";
+import {IConvexBooster} from "../../../interfaces/convex/IConvexBooster.sol";
 
 contract ConvexStakingBridgeTest is BridgeTestBase {
     address private curveLpToken;
     address private convexLpToken;
-    address private constant DEPOSIT = 0xF403C135812408BFbE8713b5A23a04b3D48AAE31;
+    address private constant BOOSTER = 0xF403C135812408BFbE8713b5A23a04b3D48AAE31;
     address private staker;
     address private gauge;
     address private stash;
@@ -40,15 +40,15 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
     function setUp() public {
         rollupProcessor = address(this);
-        staker = IConvexDeposit(DEPOSIT).staker();
-        minter = IConvexDeposit(DEPOSIT).minter();
+        staker = IConvexBooster(BOOSTER).staker();
+        minter = IConvexBooster(BOOSTER).minter();
 
         _setUpInvalidPoolPids();
 
         // labels
         vm.label(address(this), "Test Contract");
         vm.label(address(msg.sender), "Test Contract Msg Sender");
-        vm.label(DEPOSIT, "Deposit");
+        vm.label(BOOSTER, "Booster");
         vm.label(staker, "Staker Contract Address");
         vm.label(minter, "Minter");
         vm.label(CRV_TOKEN, "Reward boosted CRV Token");
@@ -102,9 +102,9 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         bridge = new ConvexStakingBridge(rollupProcessor);
         uint withdrawalAmount = 10;
         address invalidLpToken = address(123);
-        uint lastPoolPid = IConvexDeposit(DEPOSIT).poolLength() - 1;
+        uint lastPoolPid = IConvexBooster(BOOSTER).poolLength() - 1;
         
-        (curveLpToken,,,,,) = IConvexDeposit(DEPOSIT).poolInfo(lastPoolPid);
+        (curveLpToken,,,,,) = IConvexBooster(BOOSTER).poolInfo(lastPoolPid);
 
 
         vm.label(address(bridge), "Bridge");
@@ -129,12 +129,12 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
     function testInvalidOutput2() public {
         bridge = new ConvexStakingBridge(rollupProcessor);
         uint withdrawalAmount = 10;
-        uint lastPoolPid = IConvexDeposit(DEPOSIT).poolLength() - 1;
+        uint lastPoolPid = IConvexBooster(BOOSTER).poolLength() - 1;
         uint anotherPoolPid = lastPoolPid - 1;
         // valid curve lp token of another pool
         address incorrectCurveLpToken;
         
-        (curveLpToken,,,,,) = IConvexDeposit(DEPOSIT).poolInfo(lastPoolPid);
+        (curveLpToken,,,,,) = IConvexBooster(BOOSTER).poolInfo(lastPoolPid);
 
         // labels
         vm.label(address(bridge), "Bridge");
@@ -145,7 +145,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         _deposit(withdrawalAmount);
 
         // withdraw using correct interaction but incorrect pool
-        (incorrectCurveLpToken,,,,,) = IConvexDeposit(DEPOSIT).poolInfo(anotherPoolPid);
+        (incorrectCurveLpToken,,,,,) = IConvexBooster(BOOSTER).poolInfo(anotherPoolPid);
         vm.label(incorrectCurveLpToken, "Incorrect Curve LP Token Contract");
         
         vm.expectRevert(ErrorLib.InvalidOutputA.selector);
@@ -164,9 +164,9 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
     function testInvalidOutputEth() public {
         bridge = new ConvexStakingBridge(rollupProcessor);
         uint withdrawalAmount = 10;
-        uint lastPoolPid = IConvexDeposit(DEPOSIT).poolLength() - 1;
+        uint lastPoolPid = IConvexBooster(BOOSTER).poolLength() - 1;
         
-        (curveLpToken,,,,,) = IConvexDeposit(DEPOSIT).poolInfo(lastPoolPid);
+        (curveLpToken,,,,,) = IConvexBooster(BOOSTER).poolInfo(lastPoolPid);
 
         // labels
         vm.label(address(bridge), "Bridge");
@@ -191,11 +191,11 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
     function testNonExistingInteraction() public {
         bridge = new ConvexStakingBridge(rollupProcessor);
         uint withdrawalAmount = 10;
-        uint lastPoolPid = IConvexDeposit(DEPOSIT).poolLength() - 1;
+        uint lastPoolPid = IConvexBooster(BOOSTER).poolLength() - 1;
 
         uint nonExistingInteractionNonce = INTERACTION_NONCE - 1;
         
-        (curveLpToken,,,,,) = IConvexDeposit(DEPOSIT).poolInfo(lastPoolPid);
+        (curveLpToken,,,,,) = IConvexBooster(BOOSTER).poolInfo(lastPoolPid);
 
         // labels
         vm.label(address(bridge), "Bridge");
@@ -221,8 +221,8 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         bridge = new ConvexStakingBridge(rollupProcessor);
         address invalidCaller = address(123);
         uint depositAmount = 10;
-        uint lastPoolPid = IConvexDeposit(DEPOSIT).poolLength() - 1;
-        (curveLpToken,,,,,) = IConvexDeposit(DEPOSIT).poolInfo(lastPoolPid);
+        uint lastPoolPid = IConvexBooster(BOOSTER).poolLength() - 1;
+        (curveLpToken,,,,,) = IConvexBooster(BOOSTER).poolInfo(lastPoolPid);
         
         // labels
         vm.label(address(bridge), "Bridge");
@@ -245,7 +245,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
     function testStakeLpTokens(uint96 _depositAmount) public {
         vm.assume(_depositAmount > 1);
 
-        uint poolLength = IConvexDeposit(DEPOSIT).poolLength();
+        uint poolLength = IConvexBooster(BOOSTER).poolLength();
 
         for (uint i=0; i < poolLength; i++) {
             if (invalidPoolPids[i]) {
@@ -262,7 +262,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
     function testStakeLpTokensClaimSubsidy(uint96 _depositAmount) public {
         vm.assume(_depositAmount > 1);
 
-        uint poolLength = IConvexDeposit(DEPOSIT).poolLength();
+        uint poolLength = IConvexBooster(BOOSTER).poolLength();
 
         for (uint i=0; i < poolLength; i++) {
             if (invalidPoolPids[i]) {
@@ -284,7 +284,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
     function testZeroTotalInputValue() public {
         uint depositAmount = 0;
-        uint poolLength = IConvexDeposit(DEPOSIT).poolLength();
+        uint poolLength = IConvexBooster(BOOSTER).poolLength();
 
         for (uint i=0; i < poolLength; i++) {
             if (invalidPoolPids[i]) {
@@ -317,7 +317,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         // deposit amount is greater than withdrawal amount -> can't close the interaction
         uint depositAmount = withdrawalAmount + 1;
         // deposit LpTokens first so the totalSupply of minted tokens match (no other workaround)
-        uint poolLength = IConvexDeposit(DEPOSIT).poolLength();
+        uint poolLength = IConvexBooster(BOOSTER).poolLength();
 
         for (uint i=0; i < poolLength; i++) {
             if (invalidPoolPids[i]) {
@@ -345,7 +345,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
     function testWithdrawLpTokens(uint64 _withdrawalAmount) public {
         vm.assume(_withdrawalAmount > 1);
-        uint poolLength = IConvexDeposit(DEPOSIT).poolLength();
+        uint poolLength = IConvexBooster(BOOSTER).poolLength();
 
         for (uint i=0; i < poolLength; i++) {
             if (invalidPoolPids[i]) {
@@ -384,7 +384,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
     function testWithdrawLpTokensWithRewards(uint64 _withdrawalAmount) public {
         vm.assume(_withdrawalAmount > 401220753522760);
         // deposit LpTokens first so the totalSupply of minted tokens match (no other workaround)
-        uint poolLength = IConvexDeposit(DEPOSIT).poolLength();
+        uint poolLength = IConvexBooster(BOOSTER).poolLength();
 
         delete rewardsGreater; // clear array on test start
 
@@ -436,7 +436,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
     function testWithdrawLpTokensClaimSubsidy(uint64 _withdrawalAmount) public {
         vm.assume(_withdrawalAmount > 1);
-        uint poolLength = IConvexDeposit(DEPOSIT).poolLength();
+        uint poolLength = IConvexBooster(BOOSTER).poolLength();
 
         for (uint i=0; i < poolLength; i++) {
             if (invalidPoolPids[i]) {
@@ -519,7 +519,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
     function _setUpBridge(uint _poolPid) internal {
         bridge = new ConvexStakingBridge(rollupProcessor);
-        (curveLpToken, convexLpToken, gauge, crvRewards, stash,) = IConvexDeposit(DEPOSIT).poolInfo(_poolPid);
+        (curveLpToken, convexLpToken, gauge, crvRewards, stash,) = IConvexBooster(BOOSTER).poolInfo(_poolPid);
         
         // labels
         vm.label(address(bridge), "Bridge");

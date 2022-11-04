@@ -11,7 +11,7 @@ import {AztecTypes} from "../../aztec/libraries/AztecTypes.sol";
 import {ICurvePool} from "../../interfaces/curve/ICurvePool.sol";
 import {ErrorLib} from "../base/ErrorLib.sol";
 import {IRollupProcessor} from "../../aztec/interfaces/IRollupProcessor.sol";
-import {IConvexDeposit} from "../../interfaces/convex/IConvexDeposit.sol";
+import {IConvexBooster} from "../../interfaces/convex/IConvexBooster.sol";
 import {ICurveLpToken} from "../../interfaces/convex/ICurveLpToken.sol";
 import {ICurveRewards} from "../../interfaces/convex/ICurveRewards.sol";
 
@@ -30,7 +30,7 @@ import {ICurveRewards} from "../../interfaces/convex/ICurveRewards.sol";
  @author Vojtech Kaiser
  */
 contract ConvexStakingBridge is BridgeBase {
-    using SafeERC20 for IConvexDeposit;
+    using SafeERC20 for IConvexBooster;
     using SafeERC20 for ICurveLpToken;
 
     struct PoolInfo {
@@ -48,7 +48,7 @@ contract ConvexStakingBridge is BridgeBase {
     }
 
     // Contracts
-    IConvexDeposit public constant DEPOSIT = IConvexDeposit(0xF403C135812408BFbE8713b5A23a04b3D48AAE31);
+    IConvexBooster public constant BOOSTER = IConvexBooster(0xF403C135812408BFbE8713b5A23a04b3D48AAE31);
     ICurveLpToken public curveLpToken;
     ICurveRewards public curveRewards;
     
@@ -74,7 +74,7 @@ contract ConvexStakingBridge is BridgeBase {
         uint32[] memory minGasPerMinute = new uint32[](2 * lastPoolLength);
 
         for (uint i = 0; i < lastPoolLength; i++) {
-            (address curveLpToken,,,,,) = DEPOSIT.poolInfo(i);
+            (address curveLpToken,,,,,) = BOOSTER.poolInfo(i);
             criterias[i] = uint(keccak256(abi.encodePacked(curveLpToken, address(0))));
             gasUsage[i] = 1000000;
             minGasPerMinute[i] = 690;
@@ -142,11 +142,11 @@ contract ConvexStakingBridge is BridgeBase {
             _setTokens(selectedPool);
 
             // approvals
-            curveLpToken.approve(address(DEPOSIT), _totalInputValue);
+            curveLpToken.approve(address(BOOSTER), _totalInputValue);
 
             uint startCurveRewards = curveRewards.balanceOf(address(this));
 
-            DEPOSIT.deposit(selectedPool.poolPid, _totalInputValue, true);
+            BOOSTER.deposit(selectedPool.poolPid, _totalInputValue, true);
 
             uint endCurveRewards = curveRewards.balanceOf(address(this)); 
 
@@ -198,7 +198,7 @@ contract ConvexStakingBridge is BridgeBase {
         bool claimRewards = _auxData == 1; // if passed anything but 1, rewards will not be claimed
         curveRewards.withdraw(_totalInputValue, claimRewards);
         
-        DEPOSIT.withdraw(_selectedPool.poolPid, _totalInputValue);
+        BOOSTER.withdraw(_selectedPool.poolPid, _totalInputValue);
 
         uint endCurveLpTokens = curveLpToken.balanceOf(address(this));
 
@@ -212,11 +212,10 @@ contract ConvexStakingBridge is BridgeBase {
     @notice Cached. Loads only new pools.
     */
     function _loadPools() internal {
-        uint currentPoolLength = DEPOSIT.poolLength();
+        uint currentPoolLength = BOOSTER.poolLength();
         if (currentPoolLength != lastPoolLength) {
-            // for (uint i=0; i < currentPoolLength; i++) {
-            for (uint i=lastPoolLength; i < currentPoolLength; i++) { // caching (assuming only new pools can be added and current cannot be changed)
-                (address curveLpToken, address convexToken,, address curveRewards,,) = DEPOSIT.poolInfo(i);
+            for (uint i=lastPoolLength; i < currentPoolLength; i++) {
+                (address curveLpToken, address convexToken,, address curveRewards,,) = BOOSTER.poolInfo(i);
                 pools[curveLpToken] = PoolInfo(i, curveLpToken, convexToken, curveRewards, true);
             }
             lastPoolLength = currentPoolLength;
