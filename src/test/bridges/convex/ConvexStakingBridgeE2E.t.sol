@@ -146,6 +146,7 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
         AztecTypes.AztecAsset memory curveLpToken = AztecTypes.AztecAsset(1, curveLpToken, AztecTypes.AztecAssetType.ERC20);
         AztecTypes.AztecAsset memory virtualAsset = AztecTypes.AztecAsset(0, address(0), AztecTypes.AztecAssetType.VIRTUAL);
 
+        // different criteria for deposit and withdrawal
         criterias[0] = bridge.computeCriteria(curveLpToken, emptyAsset, virtualAsset, emptyAsset, 0);
         criterias[1] = bridge.computeCriteria(virtualAsset, emptyAsset, curveLpToken, emptyAsset, 0);
 

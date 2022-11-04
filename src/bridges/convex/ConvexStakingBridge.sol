@@ -17,7 +17,7 @@ import {ICurveRewards} from "../../interfaces/convex/ICurveRewards.sol";
 
 
 /**
- @notice A DefiBridge that allows Convex Finance to stake Curve LP tokens and earn boosted CRV 
+ @notice A DefiBridge that allows user to stake Curve LP tokens through Convex Finance and earn boosted CRV 
  without locking them in for an extended period of time. Plus earning CVX and possibly other rewards. 
  @notice Staked tokens can be withdrawn (unstaked) any time.
  @dev Convex Finance mints pool specific Convex LP token, however, not for the staking user (the bridge) directly. 
@@ -43,7 +43,7 @@ contract ConvexStakingBridge is BridgeBase {
 
     struct Interaction {
         uint valueStaked;
-        address representedConvexToken;
+        address representingConvexToken;
         bool exists;
     }
 
@@ -93,7 +93,7 @@ contract ConvexStakingBridge is BridgeBase {
     receive() external payable {}
 
     /**
-    @notice Stake and unstake Curve LP tokens through Convex Finance Deposit contract anytime.
+    @notice Stake and unstake Curve LP tokens through Convex Finance Booster anytime.
     @notice Convert rate between Curve LP token and corresponding Convex LP token is 1:1
     @notice Stake == Deposit, Unstake == Withdraw
     @param _inputAssetA Curve LP token (staking), virtual asset (unstaking)
@@ -167,7 +167,7 @@ contract ConvexStakingBridge is BridgeBase {
             selectedPool = pools[_outputAssetA.erc20Address];
 
             if (!selectedPool.exists || 
-            selectedPool.convexToken != interactions[_inputAssetA.id].representedConvexToken) {
+            selectedPool.convexToken != interactions[_inputAssetA.id].representingConvexToken) {
                 revert ErrorLib.InvalidOutputA();
             }
 

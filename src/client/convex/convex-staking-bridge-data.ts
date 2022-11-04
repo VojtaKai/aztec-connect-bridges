@@ -10,11 +10,8 @@ import {
   IERC20Metadata__factory,
   IRollupProcessor,
   IRollupProcessor__factory,
-
   IConvexBooster__factory,
   IConvexBooster,
-  IConvexToken,
-  IConvexToken__factory,
   ICurveLpToken,
   ICurveLpToken__factory,
   ICurveRewards,
@@ -40,7 +37,7 @@ export interface IPoolInfo {
 
 interface IBridgeInteraction {
   id: number,
-  representedConvexToken: string,
+  representingConvexToken: string,
   valueStaked: bigint
 }
 
@@ -82,20 +79,14 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
     auxData: number,
     inputValue: bigint,
   ): Promise<bigint[]> {
-    // input should be again curve Lp token
-    // expected number of minted convex tokens. It is denominated in CSB tokens that are minted on the bridge
-    // however, they are one to one so I could basicly say, return [inputValue]
-    // because other than that I am testing my mocks
     if (inputValue === 0n) {
       throw "InvalidInputAmount"
     }
 
     await this.loadPools()
-    
-    // maybe check if assets are supported
+
     let selectedPool: IPoolInfo | undefined;
     let curveRewards: ICurveRewards
-    let convexToken: IConvexToken
     let curveLpToken: ICurveLpToken
 
     if (inputAssetA.assetType == AztecAssetType.ERC20 && outputAssetA.assetType == AztecAssetType.VIRTUAL) {
@@ -105,16 +96,15 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
       }
 
       curveRewards = ICurveRewards__factory.connect(selectedPool.curveRewards, this.ethersProvider)
-      convexToken = IConvexToken__factory.connect(selectedPool.convexToken, this.ethersProvider)
 
 
-      const balanceBefore = (await convexToken.balanceOf(curveRewards.address)).toBigInt()
+      const balanceBefore = (await curveRewards.balanceOf(this.bridgeAddress)).toBigInt()
       await this.booster.deposit(selectedPool.poolPid, inputValue, true)
-      const balanceAfter = (await convexToken.balanceOf(curveRewards.address)).toBigInt()
+      const balanceAfter = (await curveRewards.balanceOf(this.bridgeAddress)).toBigInt()
 
       this.interactions.push({
         id: outputAssetA.id,
-        representedConvexToken: selectedPool.convexToken,
+        representingConvexToken: selectedPool.convexToken,
         valueStaked: inputValue
       })
 
@@ -131,12 +121,11 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
 
       selectedPool = this.pools.find(p => p.curveLpToken === outputAssetA.erc20Address.toString())
 
-      if (!selectedPool || selectedPool.convexToken != interaction.representedConvexToken) {
+      if (!selectedPool || selectedPool.convexToken != interaction.representingConvexToken) {
         throw new Error("Invalid Output Token")
       }
 
       curveRewards = ICurveRewards__factory.connect(selectedPool.curveRewards, this.ethersProvider)
-      convexToken = IConvexToken__factory.connect(selectedPool.convexToken, this.ethersProvider)
       curveLpToken = ICurveLpToken__factory.connect(outputAssetA.erc20Address.toString(), this.ethersProvider)
 
       const claimRewards = auxData === 1
@@ -156,6 +145,7 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
   }
 
   async getAPR(yieldAsset: AztecAsset): Promise<number> {
+    // yieldAsset is the Convex LP token
     // Not taking into account how the deposited funds will change the yield
     await this.loadPools()
 
@@ -180,7 +170,9 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
     outputAssetA: AztecAsset,
     outputAssetB: AztecAsset,
     auxData: number,
-  ): Promise<AssetValue[]> {
+    ): Promise<AssetValue[]> {
+    // underlying token is the Curve LP token
+
     await this.loadPools()
 
     const selectedPool = this.pools.find(pool => pool.curveLpToken === underlyingToken.erc20Address.toString())
@@ -189,7 +181,7 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
       throw new Error("Invalid Input A")
     }
 
-    const curveRewards = ICurveRewards__factory.connect(selectedPool.curveRewards, this.booster.provider)
+    const curveRewards = ICurveRewards__factory.connect(selectedPool.curveRewards, this.ethersProvider)
     const tokenSupply = await curveRewards.totalSupply()
     return [{ assetId: underlyingToken.id, value: tokenSupply.toBigInt()}]
   }
@@ -204,14 +196,14 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
     };
 
 
-    const representedConvexToken = this.interactions.find(i => i.id === virtualAsset.id)?.representedConvexToken
+    const representingConvexToken = this.interactions.find(i => i.id === virtualAsset.id)?.representingConvexToken
 
-    if (!representedConvexToken) {
+    if (!representingConvexToken) {
       throw new Error('Unknown Virtual Asset')
     }
 
 
-    const selectedPool = this.pools.find(pool => pool.convexToken === representedConvexToken)
+    const selectedPool = this.pools.find(pool => pool.convexToken === representingConvexToken)
 
     if (selectedPool == undefined) {
       throw new Error("Pool not found")

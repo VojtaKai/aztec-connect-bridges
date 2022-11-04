@@ -5,8 +5,6 @@ import {
     IERC20Metadata__factory,
     IConvexBooster__factory,
     IConvexBooster,
-    IConvexToken,
-    IConvexToken__factory,
     ICurveLpToken,
     ICurveLpToken__factory,
     ICurveRewards,
@@ -24,13 +22,10 @@ type Mockify<T> = {
 };
 
 describe("convex staking bridge data", () => {
-  let boosterMocker: Mockify<IConvexBooster>;
-  let convexLpTokenMocked: Mockify<IConvexToken>;
+  let boosterMocked: Mockify<IConvexBooster>;
   let curveLpTokenMocked: Mockify<ICurveLpToken>;
   let curveRewardsMocked: Mockify<ICurveRewards>;
   let ERC20Metadata: Mockify<IERC20Metadata>;
-
-  const virtualAssetId = 2 ** 29 + 1
 
   // Tokens
   const curveLpToken = {
@@ -40,7 +35,7 @@ describe("convex staking bridge data", () => {
   }
 
   const virtualAsset = {
-    id: virtualAssetId,
+    id: 2 ** 29 + 1,
     assetType: AztecAssetType.VIRTUAL,
     erc20Address: EthAddress.ZERO,
   };
@@ -61,7 +56,7 @@ describe("convex staking bridge data", () => {
   const crvRewards1 = "0x14F02f3b47B407A7a0cdb9292AA077Ce9E124803"
   
   // Other addresses
-  const convexDepositAddr = "0xF403C135812408BFbE8713b5A23a04b3D48AAE31"
+  const convexBoosterAddr = "0xF403C135812408BFbE8713b5A23a04b3D48AAE31"
 
   it("should return correct expected output - staking", async () => {
     const inputValue = 10n
@@ -70,23 +65,23 @@ describe("convex staking bridge data", () => {
     const balanceBefore = 0n
 
     // Mocks
-    boosterMocker = {
-      ...boosterMocker,
+    boosterMocked = {
+      ...boosterMocked,
       poolLength: jest.fn().mockResolvedValue(BigNumber.from(2)),
       poolInfo: jest.fn().mockResolvedValueOnce([curveLpToken0, convexToken0, "", crvRewards0, "", ""]).mockResolvedValueOnce([curveLpToken1, convexToken1, "", crvRewards1, "", ""]),
       deposit: jest.fn().mockResolvedValue(true)
     }
 
-    convexLpTokenMocked = {
-      ...convexLpTokenMocked,
+    curveRewardsMocked = {
+      ...curveRewardsMocked,
       balanceOf: jest.fn().mockResolvedValueOnce(BigNumber.from(balanceBefore)).mockResolvedValueOnce(BigNumber.from(inputValue))
     }
 
-    IConvexBooster__factory.connect = () => boosterMocker as IConvexBooster
-    IConvexToken__factory.connect = () => convexLpTokenMocked as IConvexToken
+    IConvexBooster__factory.connect = () => boosterMocked as IConvexBooster
+    ICurveRewards__factory.connect = () => curveRewardsMocked as ICurveRewards
 
     // Bridge
-    const convexStakingBridge = ConvexBridgeData.create({} as any, EthAddress.random(), EthAddress.fromString(convexDepositAddr))
+    const convexStakingBridge = ConvexBridgeData.create({} as any, EthAddress.random(), EthAddress.fromString(convexBoosterAddr))
 
     const expectedOutput = await convexStakingBridge.getExpectedOutput(curveLpToken, emptyAsset, virtualAsset, emptyAsset, 0, inputValue)
 
@@ -101,8 +96,8 @@ describe("convex staking bridge data", () => {
     const balanceBefore = 0n
 
     // Mocks
-    boosterMocker = {
-      ...boosterMocker,
+    boosterMocked = {
+      ...boosterMocked,
       poolLength: jest.fn().mockResolvedValue(BigNumber.from(2)),
       poolInfo: jest.fn().mockResolvedValueOnce([curveLpToken0, convexToken0, "", crvRewards0, "", ""]).mockResolvedValueOnce([curveLpToken1, convexToken1, "", crvRewards1, "", ""]),
       withdraw: jest.fn().mockResolvedValue(true)
@@ -118,17 +113,17 @@ describe("convex staking bridge data", () => {
       balanceOf: jest.fn().mockResolvedValueOnce(BigNumber.from(balanceBefore)).mockResolvedValueOnce(BigNumber.from(withdrawValue))
     }
 
-    IConvexBooster__factory.connect = () => boosterMocker as IConvexBooster
+    IConvexBooster__factory.connect = () => boosterMocked as IConvexBooster
     ICurveRewards__factory.connect = () => curveRewardsMocked as ICurveRewards
     ICurveLpToken__factory.connect = () => curveLpTokenMocked as ICurveLpToken
     
     // Bridge
-    const convexStakingBridge = ConvexBridgeData.create({} as any, EthAddress.random(), EthAddress.fromString(convexDepositAddr))
+    const convexStakingBridge = ConvexBridgeData.create({} as any, EthAddress.random(), EthAddress.fromString(convexBoosterAddr))
     
     // Mock an interaction
     convexStakingBridge.interactions = [{
       id: virtualAsset.id,
-      representedConvexToken: convexToken1,
+      representingConvexToken: convexToken1,
       valueStaked: withdrawValue
     }]
 
@@ -144,22 +139,22 @@ describe("convex staking bridge data", () => {
     const valueStaked = withdrawValue + 1n
 
     // Mocks
-    boosterMocker = {
-      ...boosterMocker,
+    boosterMocked = {
+      ...boosterMocked,
       poolLength: jest.fn().mockResolvedValue(BigNumber.from(2)),
       poolInfo: jest.fn().mockResolvedValueOnce([curveLpToken0, convexToken0, "", crvRewards0, "", ""]).mockResolvedValueOnce([curveLpToken1, convexToken1, "", crvRewards1, "", ""]),
       withdraw: jest.fn().mockResolvedValue(true)
     }
 
-    IConvexBooster__factory.connect = () => boosterMocker as IConvexBooster
+    IConvexBooster__factory.connect = () => boosterMocked as IConvexBooster
 
     // Bridge
-    const convexStakingBridge = ConvexBridgeData.create({} as any, EthAddress.random(), EthAddress.fromString(convexDepositAddr))
+    const convexStakingBridge = ConvexBridgeData.create({} as any, EthAddress.random(), EthAddress.fromString(convexBoosterAddr))
 
     // Mock an interaction, interaction value staked differs from the value one wants to withdraw
     convexStakingBridge.interactions = [{
       id: virtualAsset.id,
-      representedConvexToken: convexToken1,
+      representingConvexToken: convexToken1,
       valueStaked: valueStaked
     }]
 
@@ -173,8 +168,8 @@ describe("convex staking bridge data", () => {
     const rewardRate = BigNumber.from("9695446547950370")
 
     // Mocks
-    boosterMocker = {
-      ...boosterMocker,
+    boosterMocked = {
+      ...boosterMocked,
       poolLength: jest.fn().mockResolvedValue(BigNumber.from(2)),
       poolInfo: jest.fn().mockResolvedValueOnce([curveLpToken0, convexToken0, "", crvRewards0, "", ""]).mockResolvedValueOnce([curveLpToken1, convexToken1, "", crvRewards1, "", ""]),
     }
@@ -185,21 +180,21 @@ describe("convex staking bridge data", () => {
       rewardRate: jest.fn().mockResolvedValueOnce(rewardRate)
     }
 
-    IConvexBooster__factory.connect = () => boosterMocker as IConvexBooster
+    IConvexBooster__factory.connect = () => boosterMocked as IConvexBooster
     ICurveRewards__factory.connect = () => curveRewardsMocked as ICurveRewards
 
 
     // Yield Asset
-    const convexToken = {
+    const convexLpToken = {
       id: 0,
       assetType: AztecAssetType.ERC20,
       erc20Address: EthAddress.fromString(convexToken1)
     }
 
     // Bridge
-    const convexStakingBridge = ConvexBridgeData.create({} as any, EthAddress.random(), EthAddress.fromString(convexDepositAddr))
+    const convexStakingBridge = ConvexBridgeData.create({} as any, EthAddress.random(), EthAddress.fromString(convexBoosterAddr))
 
-    const expectedAPR = await convexStakingBridge.getAPR(convexToken)
+    const expectedAPR = await convexStakingBridge.getAPR(convexLpToken)
 
     expect(expectedAPR).toBe(12.941501924435627)
 
@@ -209,8 +204,8 @@ describe("convex staking bridge data", () => {
     const totalSupply = BigNumber.from(1e18.toString())
 
     // Mocks
-    boosterMocker = {
-      ...boosterMocker,
+    boosterMocked = {
+      ...boosterMocked,
       poolLength: jest.fn().mockResolvedValue(BigNumber.from(2)),
       poolInfo: jest.fn().mockResolvedValueOnce([curveLpToken0, convexToken0, "", crvRewards0, "", ""]).mockResolvedValueOnce([curveLpToken1, convexToken1, "", crvRewards1, "", ""]),
     }
@@ -220,11 +215,11 @@ describe("convex staking bridge data", () => {
       totalSupply: jest.fn().mockResolvedValueOnce(totalSupply),
     }
 
-    IConvexBooster__factory.connect = () => boosterMocker as IConvexBooster
+    IConvexBooster__factory.connect = () => boosterMocked as IConvexBooster
     ICurveRewards__factory.connect = () => curveRewardsMocked as ICurveRewards
 
     // Bridge
-    const convexStakingBridge = ConvexBridgeData.create({} as any, EthAddress.random(), EthAddress.fromString(convexDepositAddr))
+    const convexStakingBridge = ConvexBridgeData.create({} as any, EthAddress.random(), EthAddress.fromString(convexBoosterAddr))
 
     // Curve Lp Token is the underlying token
     const expectedMarketSize = await convexStakingBridge.getMarketSize(curveLpToken, emptyAsset, virtualAsset, emptyAsset, 0)
@@ -246,8 +241,8 @@ describe("convex staking bridge data", () => {
     const balanceBefore = 0n
 
     // Mocks
-    boosterMocker = {
-      ...boosterMocker,
+    boosterMocked = {
+      ...boosterMocked,
       poolLength: jest.fn().mockResolvedValue(BigNumber.from(2)),
       poolInfo: jest.fn().mockResolvedValueOnce([curveLpToken0, convexToken0, "", crvRewards0, "", ""]).mockResolvedValueOnce([curveLpToken1, convexToken1, "", crvRewards1, "", ""]),
       withdraw: jest.fn().mockResolvedValue(true)
@@ -270,18 +265,18 @@ describe("convex staking bridge data", () => {
       decimals: jest.fn().mockResolvedValueOnce(underlyingAssetDecimals),
     }
 
-    IConvexBooster__factory.connect = () => boosterMocker as IConvexBooster
+    IConvexBooster__factory.connect = () => boosterMocked as IConvexBooster
     ICurveRewards__factory.connect = () => curveRewardsMocked as ICurveRewards
     ICurveLpToken__factory.connect = () => curveLpTokenMocked as ICurveLpToken
     IERC20Metadata__factory.connect = () => ERC20Metadata as IERC20Metadata
 
     // Bridge
-    const convexStakingBridge = ConvexBridgeData.create({} as any, EthAddress.random(), EthAddress.fromString(convexDepositAddr))
+    const convexStakingBridge = ConvexBridgeData.create({} as any, EthAddress.random(), EthAddress.fromString(convexBoosterAddr))
 
     // Mock an interaction
     convexStakingBridge.interactions = [{
       id: virtualAsset.id,
-      representedConvexToken: convexToken1,
+      representingConvexToken: convexToken1,
       valueStaked: withdrawValue - balanceBefore
     }]
 
@@ -301,12 +296,12 @@ describe("convex staking bridge data", () => {
     const inputValue = 10n
 
     // Bridge
-    const convexStakingBridge = ConvexBridgeData.create({} as any, EthAddress.random(), EthAddress.fromString(convexDepositAddr))
+    const convexStakingBridge = ConvexBridgeData.create({} as any, EthAddress.random(), EthAddress.fromString(convexBoosterAddr))
 
     // Mock an interaction
     convexStakingBridge.interactions = [{
       id: virtualAsset.id,
-      representedConvexToken: convexToken1,
+      representingConvexToken: convexToken1,
       valueStaked: inputValue
     }]
 

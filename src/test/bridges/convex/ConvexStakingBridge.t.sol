@@ -252,7 +252,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
                 continue;
             }
 
-
             _setUpBridge(i);
 
             _deposit(_depositAmount);
@@ -489,10 +488,10 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
     
 
     /**
-    @notice Mocking of Curve LP Token balance.
-    @notice Depositing Curve LP Tokens.
+    @notice Mocking of Curve LP token balance.
+    @notice Depositing Curve LP tokens.
     @notice Sets up an interaction.
-    @param _depositAmount Number of Curve LP Tokens to stake.
+    @param _depositAmount Number of Curve LP tokens to stake.
     */
     function _deposit(uint _depositAmount) internal {
         // Mock initial balance of CURVE LP Token for Rollup Processor
