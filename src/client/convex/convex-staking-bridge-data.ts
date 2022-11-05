@@ -28,7 +28,7 @@ import {
 import { BigNumber } from "ethers";
 
 export interface IPoolInfo {
-  poolPid: number;
+  poolId: number;
   curveLpToken: string;
   convexToken: string;
   curveRewards: string;
@@ -97,7 +97,7 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
       curveRewards = ICurveRewards__factory.connect(selectedPool.curveRewards, this.ethersProvider);
 
       const balanceBefore = (await curveRewards.balanceOf(this.bridgeAddress)).toBigInt();
-      await this.booster.deposit(selectedPool.poolPid, inputValue, true);
+      await this.booster.deposit(selectedPool.poolId, inputValue, true);
       const balanceAfter = (await curveRewards.balanceOf(this.bridgeAddress)).toBigInt();
 
       this.interactions.push({
@@ -131,7 +131,7 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
       const balanceBefore = (await curveLpToken.balanceOf(this.bridgeAddress)).toBigInt();
 
       await curveRewards.withdraw(inputValue, claimRewards);
-      await this.booster.withdraw(selectedPool.poolPid, inputValue);
+      await this.booster.withdraw(selectedPool.poolId, inputValue);
 
       const balanceAfter = (await curveLpToken.balanceOf(this.bridgeAddress)).toBigInt();
 
@@ -255,7 +255,7 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
       while (i < currentPoolLength) {
         const poolInfo = await this.booster.poolInfo(BigNumber.from(i));
         this.pools.push({
-          poolPid: i,
+          poolId: i,
           curveLpToken: poolInfo[0],
           convexToken: poolInfo[1],
           curveRewards: poolInfo[3],

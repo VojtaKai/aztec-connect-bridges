@@ -33,7 +33,7 @@ contract ConvexStakingBridge is BridgeBase {
     using SafeERC20 for ICurveLpToken;
 
     struct PoolInfo {
-        uint256 poolPid;
+        uint256 poolId;
         address curveLpToken;
         address convexToken;
         address curveRewards;
@@ -147,7 +147,7 @@ contract ConvexStakingBridge is BridgeBase {
 
             uint256 startCurveRewards = curveRewards.balanceOf(address(this));
 
-            BOOSTER.deposit(selectedPool.poolPid, _totalInputValue, true);
+            BOOSTER.deposit(selectedPool.poolId, _totalInputValue, true);
 
             uint256 endCurveRewards = curveRewards.balanceOf(address(this));
 
@@ -208,7 +208,7 @@ contract ConvexStakingBridge is BridgeBase {
         bool claimRewards = _auxData == 1; // if passed anything but 1, rewards will not be claimed
         curveRewards.withdraw(_totalInputValue, claimRewards);
 
-        BOOSTER.withdraw(_selectedPool.poolPid, _totalInputValue);
+        BOOSTER.withdraw(_selectedPool.poolId, _totalInputValue);
 
         uint256 endCurveLpTokens = curveLpToken.balanceOf(address(this));
 

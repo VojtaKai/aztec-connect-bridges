@@ -24,7 +24,7 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
     // The reference to the convex staking bridge
     ConvexStakingBridge private bridge;
 
-    mapping(uint256 => bool) public invalidPoolPids;
+    mapping(uint256 => bool) public invalidPoolIds;
 
     // Virtual Asset ID setting
     uint256 private constant INIT_ID = 0;
@@ -33,6 +33,9 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
     // To store the id of the convex staking bridge after being added
     uint256 private bridgeId;
 
+    // 5 arbitrarily selected pool ids
+    uint16[] private poolIdsToTest = new uint16[](5);
+
     // Bridge response
     uint256 private outputValueA;
     uint256 private outputValueB;
@@ -40,7 +43,7 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
 
     function setUp() public {
         staker = IConvexBooster(BOOSTER).staker();
-        _setUpInvalidPoolPids(48);
+        _setUpInvalidPoolIds(48);
 
         // labels
         vm.label(address(ROLLUP_PROCESSOR), "Rollup Processor");
@@ -59,13 +62,23 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
     @dev Virtual asset on output ignores virtual asset definition. It sets the virtual asset's ID to always be equal to interaction nonce.
     @dev Virtual asset on input takes on ID of the defined virtual asset.
     */
-    function testStakeWithdrawFlow(uint96 _depositAmount) public {
+    function testStakeWithdrawFlow(
+        uint64 _depositAmount,
+        uint16 _poolId1,
+        uint16 _poolId2,
+        uint16 _poolId3,
+        uint16 _poolId4,
+        uint16 _poolId5
+    ) public {
         vm.assume(_depositAmount > 1);
 
         uint256 poolLength = IConvexBooster(BOOSTER).poolLength();
+
+        _setupTestPoolIds(poolLength, _poolId1, _poolId2, _poolId3, _poolId4, _poolId5);
+
         uint256 j = 0;
-        for (uint256 i = 0; i < poolLength; i++) {
-            if (invalidPoolPids[i]) {
+        for (uint256 i = 0; i < poolIdsToTest.length; i++) {
+            if (invalidPoolIds[i]) {
                 continue;
             }
 
@@ -197,9 +210,9 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
         ROLLUP_ENCODER.setRollupBeneficiary(BENEFICIARY);
     }
 
-    function _setUpBridge(uint256 _poolPid) internal {
+    function _setUpBridge(uint256 _poolId) internal {
         bridge = new ConvexStakingBridge(address(ROLLUP_PROCESSOR));
-        (curveLpToken, convexLpToken, gauge, crvRewards, stash, ) = IConvexBooster(BOOSTER).poolInfo(_poolPid);
+        (curveLpToken, convexLpToken, gauge, crvRewards, stash, ) = IConvexBooster(BOOSTER).poolInfo(_poolId);
 
         // labels
         vm.label(address(bridge), "Bridge");
@@ -210,7 +223,32 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
         vm.label(gauge, "Gauge Contract");
     }
 
-    function _setUpInvalidPoolPids(uint256 _pid) internal {
-        invalidPoolPids[_pid] = true;
+    function _setupTestPoolIds(
+        uint256 _poolLength,
+        uint16 _poolId1,
+        uint16 _poolId2,
+        uint16 _poolId3,
+        uint16 _poolId4,
+        uint16 _poolId5
+    ) internal {
+        delete poolIdsToTest;
+
+        // poolId value limitation
+        bound(_poolId1, 0, _poolLength - 1);
+        bound(_poolId2, 0, _poolLength - 1);
+        bound(_poolId3, 0, _poolLength - 1);
+        bound(_poolId4, 0, _poolLength - 1);
+        bound(_poolId5, 0, _poolLength - 1);
+
+        // test pools filled
+        poolIdsToTest.push(_poolId1);
+        poolIdsToTest.push(_poolId2);
+        poolIdsToTest.push(_poolId3);
+        poolIdsToTest.push(_poolId4);
+        poolIdsToTest.push(_poolId5);
+    }
+
+    function _setUpInvalidPoolIds(uint256 _pid) internal {
+        invalidPoolIds[_pid] = true;
     }
 }
