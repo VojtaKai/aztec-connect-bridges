@@ -31,9 +31,9 @@ contract ConvexStakingBridgeDeployment is BaseDeployment {
     }
 
     function _listAllAssets() internal {
-        uint poolLength = BOOSTER.poolLength();
-        for (uint i=0; i < poolLength; i++) {
-            (address curveLpToken,,,,,) = BOOSTER.poolInfo(i);
+        uint256 poolLength = BOOSTER.poolLength();
+        for (uint256 i = 0; i < poolLength; i++) {
+            (address curveLpToken, , , , , ) = BOOSTER.poolInfo(i);
             listAsset(curveLpToken, 100000);
         }
     }

@@ -7,14 +7,13 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {BridgeBase} from "../base/BridgeBase.sol";
-import {AztecTypes} from "../../aztec/libraries/AztecTypes.sol";
+import {AztecTypes} from "rollup-encoder/libraries/AztecTypes.sol";
 import {ICurvePool} from "../../interfaces/curve/ICurvePool.sol";
 import {ErrorLib} from "../base/ErrorLib.sol";
-import {IRollupProcessor} from "../../aztec/interfaces/IRollupProcessor.sol";
+import {IRollupProcessor} from "rollup-encoder/interfaces/IRollupProcessor.sol";
 import {IConvexBooster} from "../../interfaces/convex/IConvexBooster.sol";
 import {ICurveLpToken} from "../../interfaces/convex/ICurveLpToken.sol";
 import {ICurveRewards} from "../../interfaces/convex/ICurveRewards.sol";
-
 
 /**
  @notice A DefiBridge that allows user to stake Curve LP tokens through Convex Finance and earn boosted CRV 
@@ -34,7 +33,7 @@ contract ConvexStakingBridge is BridgeBase {
     using SafeERC20 for ICurveLpToken;
 
     struct PoolInfo {
-        uint poolPid;
+        uint256 poolPid;
         address curveLpToken;
         address convexToken;
         address curveRewards;
@@ -42,7 +41,7 @@ contract ConvexStakingBridge is BridgeBase {
     }
 
     struct Interaction {
-        uint valueStaked;
+        uint256 valueStaked;
         address representingConvexToken;
         bool exists;
     }
@@ -51,35 +50,34 @@ contract ConvexStakingBridge is BridgeBase {
     IConvexBooster public constant BOOSTER = IConvexBooster(0xF403C135812408BFbE8713b5A23a04b3D48AAE31);
     ICurveLpToken public curveLpToken;
     ICurveRewards public curveRewards;
-    
+
     // Pools
-    uint public lastPoolLength;
+    uint256 public lastPoolLength;
 
     mapping(address => PoolInfo) public pools;
 
     // Interactions - represent deposit action, stored for withdrawal
-    mapping(uint => Interaction) public interactions;
+    mapping(uint256 => Interaction) public interactions;
 
     // Errors
     error InvalidAssetType();
     error UnknownVirtualAsset();
-    error IncorrectInteractionValue(uint stakedValue, uint valueToWithdraw);
-    
+    error IncorrectInteractionValue(uint256 stakedValue, uint256 valueToWithdraw);
 
     constructor(address _rollupProcessor) BridgeBase(_rollupProcessor) {
         _loadPools();
 
-        uint[] memory criterias = new uint[](2* lastPoolLength);
+        uint256[] memory criterias = new uint256[](2 * lastPoolLength);
         uint32[] memory gasUsage = new uint32[](2 * lastPoolLength);
         uint32[] memory minGasPerMinute = new uint32[](2 * lastPoolLength);
 
-        for (uint i = 0; i < lastPoolLength; i++) {
-            (address curveLpToken,,,,,) = BOOSTER.poolInfo(i);
-            criterias[i] = uint(keccak256(abi.encodePacked(curveLpToken, address(0))));
+        for (uint256 i = 0; i < lastPoolLength; i++) {
+            (address curveLpToken, , , , , ) = BOOSTER.poolInfo(i);
+            criterias[i] = uint256(keccak256(abi.encodePacked(curveLpToken, address(0))));
             gasUsage[i] = 1000000;
             minGasPerMinute[i] = 690;
 
-            criterias[lastPoolLength + i] = uint(keccak256(abi.encodePacked(address(0), curveLpToken)));
+            criterias[lastPoolLength + i] = uint256(keccak256(abi.encodePacked(address(0), curveLpToken)));
             gasUsage[lastPoolLength + i] = 375000;
             minGasPerMinute[lastPoolLength + i] = 260;
         }
@@ -102,26 +100,27 @@ contract ConvexStakingBridge is BridgeBase {
     @param _auxData Data to claim staking rewards
     @param outputValueA Number of Curve LP tokens staked / unstaked
     @param _rollupBeneficiary Address of the contract that receives subsidy
-    */ 
+    */
     function convert(
         AztecTypes.AztecAsset calldata _inputAssetA,
-        AztecTypes.AztecAsset calldata _inputAssetB, 
+        AztecTypes.AztecAsset calldata _inputAssetB,
         AztecTypes.AztecAsset calldata _outputAssetA,
         AztecTypes.AztecAsset calldata _outputAssetB,
-        uint _totalInputValue,
-        uint,
+        uint256 _totalInputValue,
+        uint256,
         uint64 _auxData,
         address _rollupBeneficiary
-    ) 
-    external
-    payable 
-    override(BridgeBase) 
-    onlyRollup 
-    returns(
-        uint outputValueA,
-        uint, 
-        bool
-    ) {
+    )
+        external
+        payable
+        override(BridgeBase)
+        onlyRollup
+        returns (
+            uint256 outputValueA,
+            uint256,
+            bool
+        )
+    {
         if (_totalInputValue == 0) {
             revert ErrorLib.InvalidInputAmount();
         }
@@ -130,8 +129,10 @@ contract ConvexStakingBridge is BridgeBase {
 
         PoolInfo memory selectedPool;
 
-        if (_inputAssetA.assetType == AztecTypes.AztecAssetType.ERC20 &&
-        _outputAssetA.assetType == AztecTypes.AztecAssetType.VIRTUAL) {
+        if (
+            _inputAssetA.assetType == AztecTypes.AztecAssetType.ERC20 &&
+            _outputAssetA.assetType == AztecTypes.AztecAssetType.VIRTUAL
+        ) {
             // deposit
             if (!pools[_inputAssetA.erc20Address].exists) {
                 revert ErrorLib.InvalidInputA();
@@ -144,17 +145,19 @@ contract ConvexStakingBridge is BridgeBase {
             // approvals
             curveLpToken.approve(address(BOOSTER), _totalInputValue);
 
-            uint startCurveRewards = curveRewards.balanceOf(address(this));
+            uint256 startCurveRewards = curveRewards.balanceOf(address(this));
 
             BOOSTER.deposit(selectedPool.poolPid, _totalInputValue, true);
 
-            uint endCurveRewards = curveRewards.balanceOf(address(this)); 
+            uint256 endCurveRewards = curveRewards.balanceOf(address(this));
 
             outputValueA = (endCurveRewards - startCurveRewards);
 
             interactions[_outputAssetA.id] = Interaction(_totalInputValue, selectedPool.convexToken, true);
-        } else if (_inputAssetA.assetType == AztecTypes.AztecAssetType.VIRTUAL &&
-        _outputAssetA.assetType == AztecTypes.AztecAssetType.ERC20) {
+        } else if (
+            _inputAssetA.assetType == AztecTypes.AztecAssetType.VIRTUAL &&
+            _outputAssetA.assetType == AztecTypes.AztecAssetType.ERC20
+        ) {
             // withdraw
             if (!interactions[_inputAssetA.id].exists) {
                 revert UnknownVirtualAsset();
@@ -166,8 +169,10 @@ contract ConvexStakingBridge is BridgeBase {
 
             selectedPool = pools[_outputAssetA.erc20Address];
 
-            if (!selectedPool.exists || 
-            selectedPool.convexToken != interactions[_inputAssetA.id].representingConvexToken) {
+            if (
+                !selectedPool.exists ||
+                selectedPool.convexToken != interactions[_inputAssetA.id].representingConvexToken
+            ) {
                 revert ErrorLib.InvalidOutputA();
             }
 
@@ -175,7 +180,7 @@ contract ConvexStakingBridge is BridgeBase {
 
             outputValueA = _withdraw(_inputAssetA, _totalInputValue, _auxData, selectedPool);
         } else {
-             revert InvalidAssetType();
+            revert InvalidAssetType();
         }
 
         // Pay out subsidy to the rollupBeneficiary
@@ -188,19 +193,24 @@ contract ConvexStakingBridge is BridgeBase {
     /** 
     @notice Internal function to withdraw Curve LP tokens
     */
-    function _withdraw(AztecTypes.AztecAsset memory _inputAssetA, uint _totalInputValue, uint64 _auxData, PoolInfo memory _selectedPool) internal returns(uint outputValueA) {
+    function _withdraw(
+        AztecTypes.AztecAsset memory _inputAssetA,
+        uint256 _totalInputValue,
+        uint64 _auxData,
+        PoolInfo memory _selectedPool
+    ) internal returns (uint256 outputValueA) {
         // approvals
         curveLpToken.approve(ROLLUP_PROCESSOR, _totalInputValue);
 
-        uint startCurveLpTokens = curveLpToken.balanceOf(address(this));
+        uint256 startCurveLpTokens = curveLpToken.balanceOf(address(this));
 
         // transfer CONVEX tokens from CrvRewards back to the bridge
         bool claimRewards = _auxData == 1; // if passed anything but 1, rewards will not be claimed
         curveRewards.withdraw(_totalInputValue, claimRewards);
-        
+
         BOOSTER.withdraw(_selectedPool.poolPid, _totalInputValue);
 
-        uint endCurveLpTokens = curveLpToken.balanceOf(address(this));
+        uint256 endCurveLpTokens = curveLpToken.balanceOf(address(this));
 
         outputValueA = (endCurveLpTokens - startCurveLpTokens);
 
@@ -212,10 +222,10 @@ contract ConvexStakingBridge is BridgeBase {
     @notice Cached. Loads only new pools.
     */
     function _loadPools() internal {
-        uint currentPoolLength = BOOSTER.poolLength();
+        uint256 currentPoolLength = BOOSTER.poolLength();
         if (currentPoolLength != lastPoolLength) {
-            for (uint i=lastPoolLength; i < currentPoolLength; i++) {
-                (address curveLpToken, address convexToken,, address curveRewards,,) = BOOSTER.poolInfo(i);
+            for (uint256 i = lastPoolLength; i < currentPoolLength; i++) {
+                (address curveLpToken, address convexToken, , address curveRewards, , ) = BOOSTER.poolInfo(i);
                 pools[curveLpToken] = PoolInfo(i, curveLpToken, convexToken, curveRewards, true);
             }
             lastPoolLength = currentPoolLength;
@@ -244,5 +254,5 @@ contract ConvexStakingBridge is BridgeBase {
         uint64
     ) public view override(BridgeBase) returns (uint256) {
         return uint256(keccak256(abi.encodePacked(_inputAssetA.erc20Address, _outputAssetA.erc20Address)));
-    } 
+    }
 }
