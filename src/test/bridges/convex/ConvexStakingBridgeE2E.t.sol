@@ -14,6 +14,7 @@ import {IConvexBooster} from "../../../interfaces/convex/IConvexBooster.sol";
 contract ConvexStakingBridgeE2ETest is BridgeTestBase {
     address private curveLpToken;
     address private convexLpToken;
+    address private representingConvexToken;
     address private constant BOOSTER = 0xF403C135812408BFbE8713b5A23a04b3D48AAE31;
     address private staker;
     address private gauge;
@@ -25,10 +26,6 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
     ConvexStakingBridge private bridge;
 
     mapping(uint256 => bool) public invalidPoolIds;
-
-    // Virtual Asset ID setting
-    uint256 private constant INIT_ID = 0;
-    uint256 private constant STEP = 64;
 
     // To store the id of the convex staking bridge after being added
     uint256 private bridgeId;
@@ -76,13 +73,13 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
 
         _setupTestPoolIds(poolLength, _poolId1, _poolId2, _poolId3, _poolId4, _poolId5);
 
-        uint256 j = 0;
         for (uint256 i = 0; i < poolIdsToTest.length; i++) {
             if (invalidPoolIds[i]) {
                 continue;
             }
 
             _setUpBridge(i);
+            _setupRepresentingConvexToken();
             _setupSubsidy();
 
             vm.startPrank(MULTI_SIG);
@@ -90,6 +87,7 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
             ROLLUP_PROCESSOR.setSupportedBridge(address(bridge), 1000000);
             // Add Assets and set their initial gasLimits
             ROLLUP_PROCESSOR.setSupportedAsset(curveLpToken, 100000);
+            ROLLUP_PROCESSOR.setSupportedAsset(representingConvexToken, 100000);
             vm.stopPrank();
 
             // Fetch the id of the convex staking bridge
@@ -97,35 +95,30 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
 
             // get Aztec assets
             AztecTypes.AztecAsset memory curveLpAsset = ROLLUP_ENCODER.getRealAztecAsset(curveLpToken);
-            // define virtual asset (when as input only - read NatSpec)
-            AztecTypes.AztecAsset memory virtualAsset = AztecTypes.AztecAsset(
-                INIT_ID + (STEP * j),
-                address(0),
-                AztecTypes.AztecAssetType.VIRTUAL
+            AztecTypes.AztecAsset memory representingConvexAsset = ROLLUP_ENCODER.getRealAztecAsset(
+                representingConvexToken
             );
 
             // Mint depositAmount of CURVE LP tokens for RollUp Processor
             deal(curveLpToken, address(ROLLUP_PROCESSOR), _depositAmount);
 
-            _deposit(bridgeId, curveLpAsset, virtualAsset, _depositAmount);
+            _deposit(bridgeId, curveLpAsset, representingConvexAsset, _depositAmount);
 
-            _withdraw(bridgeId, virtualAsset, curveLpAsset, _depositAmount);
-
-            j++;
+            _withdraw(bridgeId, representingConvexAsset, curveLpAsset, _depositAmount);
         }
     }
 
     function _deposit(
         uint256 _bridgeId,
         AztecTypes.AztecAsset memory _curveLpAsset,
-        AztecTypes.AztecAsset memory _virtualAsset,
+        AztecTypes.AztecAsset memory _representingConvexAsset,
         uint256 _depositAmount
     ) internal {
         ROLLUP_ENCODER.defiInteractionL2(
             _bridgeId,
             _curveLpAsset,
             emptyAsset,
-            _virtualAsset,
+            _representingConvexAsset,
             emptyAsset,
             0,
             _depositAmount
@@ -138,19 +131,20 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
         assertEq(outputValueA, _depositAmount); // number of staked tokens match deposited LP Tokens
         assertEq(outputValueB, 0, "Output value B is not 0");
         assertTrue(!isAsync, "Bridge is in async mode which it shouldn't");
+        assertEq(IERC20(representingConvexToken).balanceOf(address(ROLLUP_PROCESSOR)), _depositAmount);
         assertGt(SUBSIDY.claimableAmount(BENEFICIARY), 0, "Claimable was not updated");
     }
 
     function _withdraw(
         uint256 _bridgeId,
-        AztecTypes.AztecAsset memory _virtualAsset,
+        AztecTypes.AztecAsset memory _representingConvexAsset,
         AztecTypes.AztecAsset memory _curveLpAsset,
         uint256 _depositAmount
     ) internal {
         // Compute withdrawal calldata
         ROLLUP_ENCODER.defiInteractionL2(
             _bridgeId,
-            _virtualAsset,
+            _representingConvexAsset,
             emptyAsset,
             _curveLpAsset,
             emptyAsset,
@@ -165,8 +159,11 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
         assertEq(outputValueA, _depositAmount); // number of withdrawn tokens match deposited LP Tokens
         assertEq(outputValueB, 0, "Output value B is not 0");
         assertTrue(!isAsync, "Bridge is in async mode which it shouldn't");
-        assertEq(IERC20(curveLpToken).balanceOf(address(bridge)), 0); // Curve LP tokens owned by bridge
+
         assertEq(IERC20(curveLpToken).balanceOf(address(ROLLUP_PROCESSOR)), _depositAmount); // Curve LP tokens owned by RollUp
+
+        assertEq(IERC20(representingConvexToken).balanceOf(address(bridge)), 0); // RCT succesfully burned
+        assertEq(IERC20(representingConvexToken).balanceOf(address(ROLLUP_PROCESSOR)), 0); // RCT succesfully burned
 
         assertGt(SUBSIDY.claimableAmount(BENEFICIARY), 0, "Claimable was not updated");
     }
@@ -176,33 +173,23 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
         vm.deal(address(bridge), 0);
         vm.deal(BENEFICIARY, 0);
 
-        uint256[] memory criterias = new uint256[](2);
-        uint32[] memory gasUsage = new uint32[](2);
-        uint32[] memory minGasPerMinute = new uint32[](2);
-
-        AztecTypes.AztecAsset memory curveLpToken = AztecTypes.AztecAsset(
+        AztecTypes.AztecAsset memory curveLpAsset = AztecTypes.AztecAsset(
             1,
             curveLpToken,
             AztecTypes.AztecAssetType.ERC20
         );
-        AztecTypes.AztecAsset memory virtualAsset = AztecTypes.AztecAsset(
+        AztecTypes.AztecAsset memory representingConvexAsset = AztecTypes.AztecAsset(
             0,
-            address(0),
-            AztecTypes.AztecAssetType.VIRTUAL
+            representingConvexToken,
+            AztecTypes.AztecAssetType.ERC20
         );
 
         // different criteria for deposit and withdrawal
-        criterias[0] = bridge.computeCriteria(curveLpToken, emptyAsset, virtualAsset, emptyAsset, 0);
-        criterias[1] = bridge.computeCriteria(virtualAsset, emptyAsset, curveLpToken, emptyAsset, 0);
+        uint256 criteria = bridge.computeCriteria(curveLpAsset, emptyAsset, representingConvexAsset, emptyAsset, 0);
 
-        gasUsage[0] = 1000000;
-        gasUsage[1] = 375000;
+        uint32 minGasPerMinute = 350;
 
-        minGasPerMinute[0] = 690;
-        minGasPerMinute[1] = 260;
-
-        SUBSIDY.subsidize{value: 1 ether}(address(bridge), criterias[0], minGasPerMinute[0]);
-        SUBSIDY.subsidize{value: 1 ether}(address(bridge), criterias[1], minGasPerMinute[1]);
+        SUBSIDY.subsidize{value: 1 ether}(address(bridge), criteria, minGasPerMinute);
 
         SUBSIDY.registerBeneficiary(BENEFICIARY);
 
@@ -250,5 +237,10 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
 
     function _setUpInvalidPoolIds(uint256 _pid) internal {
         invalidPoolIds[_pid] = true;
+    }
+
+    function _setupRepresentingConvexToken() internal {
+        representingConvexToken = bridge.deployedTokens(curveLpToken);
+        vm.label(representingConvexToken, "Representing Convex Token");
     }
 }

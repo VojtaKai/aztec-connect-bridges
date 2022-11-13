@@ -29,22 +29,15 @@ import { BigNumber } from "ethers";
 
 export interface IPoolInfo {
   poolId: number;
-  curveLpToken: string;
   convexToken: string;
   curveRewards: string;
 }
 
-interface IBridgeInteraction {
-  id: number;
-  representingConvexToken: string;
-  valueStaked: bigint;
-}
-
 export class ConvexBridgeData implements BridgeDataFieldGetters {
   bridgeAddress = "0x123456789";
-  lastPoolLength = 0;
-  pools: IPoolInfo[] = [];
-  interactions: IBridgeInteraction[] = [];
+  poolLength = 0;
+  pools = new Map<string, IPoolInfo>();
+  deployedTokens = new Map<string, string>();
 
   constructor(
     private ethersProvider: Web3Provider,
@@ -79,17 +72,31 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
     inputValue: bigint,
   ): Promise<bigint[]> {
     if (inputValue === 0n) {
-      throw "InvalidInputAmount";
+      throw new Error("Invalid Input Amount");
+    }
+
+    if (inputAssetA.assetType != AztecAssetType.ERC20 || outputAssetA.assetType != AztecAssetType.ERC20) {
+      throw new Error("Invalid Asset Type");
     }
 
     await this.loadPools();
+
+    // if oba undefined
+    if (
+      this.deployedTokens.has(inputAssetA.erc20Address.toString()) &&
+      this.deployedTokens.has(outputAssetA.erc20Address.toString())
+    ) {
+      throw new Error("Unknown Asset A");
+    }
 
     let selectedPool: IPoolInfo | undefined;
     let curveRewards: ICurveRewards;
     let curveLpToken: ICurveLpToken;
 
-    if (inputAssetA.assetType == AztecAssetType.ERC20 && outputAssetA.assetType == AztecAssetType.VIRTUAL) {
-      selectedPool = this.pools.find(p => p.curveLpToken === inputAssetA.erc20Address.toString());
+    // deposit
+    if (this.deployedTokens.get(inputAssetA.erc20Address.toString()) === outputAssetA.erc20Address.toString()) {
+      selectedPool = this.pools.get(inputAssetA.erc20Address.toString());
+
       if (!selectedPool) {
         throw new Error("Invalid Input A");
       }
@@ -100,55 +107,43 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
       await this.booster.deposit(selectedPool.poolId, inputValue, true);
       const balanceAfter = (await curveRewards.balanceOf(this.bridgeAddress)).toBigInt();
 
-      this.interactions.push({
-        id: outputAssetA.id,
-        representingConvexToken: selectedPool.convexToken,
-        valueStaked: inputValue,
-      });
-
       return [balanceAfter - balanceBefore];
-    } else if (inputAssetA.assetType == AztecAssetType.VIRTUAL && outputAssetA.assetType == AztecAssetType.ERC20) {
-      const interaction = this.interactions.find(i => i.id === inputAssetA.id);
-      if (!interaction) {
-        throw new Error("Unknown Virtual Asset");
-      }
+    } else if (this.deployedTokens.get(outputAssetA.erc20Address.toString()) === inputAssetA.erc20Address.toString()) {
+      selectedPool = this.pools.get(outputAssetA.erc20Address.toString());
 
-      if (interaction.valueStaked !== inputValue) {
-        throw new Error("Incorrect Interaction Value");
-      }
-
-      selectedPool = this.pools.find(p => p.curveLpToken === outputAssetA.erc20Address.toString());
-
-      if (!selectedPool || selectedPool.convexToken != interaction.representingConvexToken) {
-        throw new Error("Invalid Output Token");
+      if (!selectedPool) {
+        throw new Error("Invalid Output A");
       }
 
       curveRewards = ICurveRewards__factory.connect(selectedPool.curveRewards, this.ethersProvider);
       curveLpToken = ICurveLpToken__factory.connect(outputAssetA.erc20Address.toString(), this.ethersProvider);
 
-      const claimRewards = auxData === 1n;
-
       const balanceBefore = (await curveLpToken.balanceOf(this.bridgeAddress)).toBigInt();
 
-      await curveRewards.withdraw(inputValue, claimRewards);
+      await curveRewards.withdraw(inputValue, true);
       await this.booster.withdraw(selectedPool.poolId, inputValue);
 
       const balanceAfter = (await curveLpToken.balanceOf(this.bridgeAddress)).toBigInt();
 
       return [balanceAfter - balanceBefore];
     } else {
-      throw new Error("Invalid Asset Type");
+      throw new Error("Invalid Output A");
     }
   }
 
   async getAPR(yieldAsset: AztecAsset): Promise<number> {
-    // yieldAsset is the Convex LP token
+    // yieldAsset is the Representing Convex token (RCT)
     // Not taking into account how the deposited funds will change the yield
     await this.loadPools();
 
-    const curveRewardsAddress = this.pools.find(
-      p => p.convexToken === yieldAsset.erc20Address.toString(),
-    )?.curveRewards;
+    const curveLpToken = (
+      Array.from(this.deployedTokens)?.find(token => token[1] === yieldAsset.erc20Address.toString()) as [
+        string,
+        string,
+      ]
+    )[0];
+
+    const curveRewardsAddress = this.pools.get(curveLpToken)?.curveRewards;
 
     if (!curveRewardsAddress) {
       throw new Error("Invalid yield asset");
@@ -174,7 +169,7 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
 
     await this.loadPools();
 
-    const selectedPool = this.pools.find(pool => pool.curveLpToken === underlyingToken.erc20Address.toString());
+    const selectedPool = this.pools.get(underlyingToken.erc20Address.toString());
 
     if (!selectedPool) {
       throw new Error("Invalid Input A");
@@ -185,7 +180,7 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
     return [{ assetId: underlyingToken.id, value: tokenSupply.toBigInt() }];
   }
 
-  async getUnderlyingAmount(virtualAsset: AztecAsset, amount: bigint): Promise<UnderlyingAsset> {
+  async getUnderlyingAmount(representingConvexToken: AztecAsset, amount: bigint): Promise<UnderlyingAsset> {
     await this.loadPools();
 
     const emptyAsset: AztecAsset = {
@@ -194,28 +189,23 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
       assetType: AztecAssetType.NOT_USED,
     };
 
-    const representingConvexToken = this.interactions.find(i => i.id === virtualAsset.id)?.representingConvexToken;
-
-    if (!representingConvexToken) {
-      throw new Error("Unknown Virtual Asset");
-    }
-
-    const selectedPool = this.pools.find(pool => pool.convexToken === representingConvexToken);
-
-    if (selectedPool == undefined) {
-      throw new Error("Pool not found");
-    }
+    const curveLpTokenAddr = (
+      Array.from(this.deployedTokens)?.find(token => token[1] === representingConvexToken.erc20Address.toString()) as [
+        string,
+        string,
+      ]
+    )[0];
 
     // curve lp token
     const underlyingAsset: AztecAsset = {
-      id: 0,
-      erc20Address: EthAddress.fromString(selectedPool.curveLpToken),
+      id: 1,
+      erc20Address: EthAddress.fromString(curveLpTokenAddr),
       assetType: AztecAssetType.ERC20,
     };
 
     // withdraw
     const underlyingAssetAmount = await this.getExpectedOutput(
-      virtualAsset,
+      representingConvexToken,
       emptyAsset,
       underlyingAsset,
       emptyAsset,
@@ -234,35 +224,21 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
     };
   }
 
-  async getInteractionPresentValue(interactionNonce: number, inputValue: bigint): Promise<AssetValue[]> {
-    const interaction = this.interactions.find(i => i.id === interactionNonce);
-    if (!interaction) {
-      throw new Error("Unknown interaction nonce");
-    }
-    // input convex tokens are minted in 1:1 ratio to staked curve lp tokens, input = output
-    return [
-      {
-        assetId: interaction.id,
-        value: interaction.valueStaked,
-      },
-    ];
-  }
-
   private async loadPools() {
     const currentPoolLength = (await this.booster.poolLength()).toNumber();
-    if (currentPoolLength !== this.lastPoolLength) {
-      let i = this.lastPoolLength;
+    if (currentPoolLength !== this.poolLength) {
+      let i = this.poolLength;
       while (i < currentPoolLength) {
         const poolInfo = await this.booster.poolInfo(BigNumber.from(i));
-        this.pools.push({
+        this.pools.set(poolInfo[0], {
           poolId: i,
-          curveLpToken: poolInfo[0],
           convexToken: poolInfo[1],
           curveRewards: poolInfo[3],
         });
+        this.deployedTokens.set(poolInfo[0], `0x100000000000000000000000000000000000000${i}`);
         i++;
       }
     }
-    this.lastPoolLength = currentPoolLength;
+    this.poolLength = currentPoolLength;
   }
 }

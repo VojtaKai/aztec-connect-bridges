@@ -29,15 +29,15 @@ describe("convex staking bridge data", () => {
 
   // Tokens
   const curveLpToken = {
-    id: 10,
+    id: 1,
     assetType: AztecAssetType.ERC20,
     erc20Address: EthAddress.fromString("0xe7A3b38c39F97E977723bd1239C3470702568e7B"),
   };
 
-  const virtualAsset = {
-    id: 2 ** 29 + 1,
-    assetType: AztecAssetType.VIRTUAL,
-    erc20Address: EthAddress.ZERO,
+  const representingConvexToken = {
+    id: 100,
+    assetType: AztecAssetType.ERC20,
+    erc20Address: EthAddress.fromString("0x1000000000000000000000000000000000000001"),
   };
 
   const emptyAsset = {
@@ -96,7 +96,7 @@ describe("convex staking bridge data", () => {
     const expectedOutput = await convexStakingBridge.getExpectedOutput(
       curveLpToken,
       emptyAsset,
-      virtualAsset,
+      representingConvexToken,
       emptyAsset,
       0n,
       inputValue,
@@ -146,17 +146,8 @@ describe("convex staking bridge data", () => {
       EthAddress.fromString(convexBoosterAddr),
     );
 
-    // Mock an interaction
-    convexStakingBridge.interactions = [
-      {
-        id: virtualAsset.id,
-        representingConvexToken: convexToken1,
-        valueStaked: withdrawValue,
-      },
-    ];
-
     const expectedOutput = await convexStakingBridge.getExpectedOutput(
-      virtualAsset,
+      representingConvexToken,
       emptyAsset,
       curveLpToken,
       emptyAsset,
@@ -165,51 +156,6 @@ describe("convex staking bridge data", () => {
     );
 
     expect(expectedOutput[0]).toBe(10n);
-  });
-
-  it("should throw deposit-withdrawal mismatch error", async () => {
-    const withdrawValue = 10n;
-    const valueStaked = withdrawValue + 1n;
-
-    // Mocks
-    boosterMocked = {
-      ...boosterMocked,
-      poolLength: jest.fn().mockResolvedValue(BigNumber.from(2)),
-      poolInfo: jest
-        .fn()
-        .mockResolvedValueOnce([curveLpToken0, convexToken0, "", crvRewards0, "", ""])
-        .mockResolvedValueOnce([curveLpToken1, convexToken1, "", crvRewards1, "", ""]),
-      withdraw: jest.fn().mockResolvedValue(true),
-    };
-
-    IConvexBooster__factory.connect = () => boosterMocked as IConvexBooster;
-
-    // Bridge
-    const convexStakingBridge = ConvexBridgeData.create(
-      {} as any,
-      EthAddress.random(),
-      EthAddress.fromString(convexBoosterAddr),
-    );
-
-    // Mock an interaction, interaction value staked differs from the value one wants to withdraw
-    convexStakingBridge.interactions = [
-      {
-        id: virtualAsset.id,
-        representingConvexToken: convexToken1,
-        valueStaked: valueStaked,
-      },
-    ];
-
-    expect(async () => {
-      await convexStakingBridge.getExpectedOutput(
-        virtualAsset,
-        emptyAsset,
-        curveLpToken,
-        emptyAsset,
-        0n,
-        withdrawValue,
-      );
-    }).rejects.toThrowError("Incorrect Interaction Value");
   });
 
   it("should return correct APR", async () => {
@@ -235,13 +181,6 @@ describe("convex staking bridge data", () => {
     IConvexBooster__factory.connect = () => boosterMocked as IConvexBooster;
     ICurveRewards__factory.connect = () => curveRewardsMocked as ICurveRewards;
 
-    // Yield Asset
-    const convexLpToken = {
-      id: 0,
-      assetType: AztecAssetType.ERC20,
-      erc20Address: EthAddress.fromString(convexToken1),
-    };
-
     // Bridge
     const convexStakingBridge = ConvexBridgeData.create(
       {} as any,
@@ -249,7 +188,7 @@ describe("convex staking bridge data", () => {
       EthAddress.fromString(convexBoosterAddr),
     );
 
-    const expectedAPR = await convexStakingBridge.getAPR(convexLpToken);
+    const expectedAPR = await convexStakingBridge.getAPR(representingConvexToken);
 
     expect(expectedAPR).toBe(12.941501924435627);
   });
@@ -286,7 +225,7 @@ describe("convex staking bridge data", () => {
     const expectedMarketSize = await convexStakingBridge.getMarketSize(
       curveLpToken,
       emptyAsset,
-      virtualAsset,
+      representingConvexToken,
       emptyAsset,
       0n,
     );
@@ -351,16 +290,7 @@ describe("convex staking bridge data", () => {
       EthAddress.fromString(convexBoosterAddr),
     );
 
-    // Mock an interaction
-    convexStakingBridge.interactions = [
-      {
-        id: virtualAsset.id,
-        representingConvexToken: convexToken1,
-        valueStaked: withdrawValue - balanceBefore,
-      },
-    ];
-
-    const expectedOutput = await convexStakingBridge.getUnderlyingAmount(virtualAsset, withdrawValue);
+    const expectedOutput = await convexStakingBridge.getUnderlyingAmount(representingConvexToken, withdrawValue);
 
     expect(expectedOutput).toStrictEqual({
       address: curveLpToken.erc20Address,
@@ -368,33 +298,6 @@ describe("convex staking bridge data", () => {
       symbol: underlyingAssetSymbol,
       decimals: underlyingAssetDecimals,
       amount: withdrawValue,
-    });
-  });
-
-  it("should return present value of an interaction", async () => {
-    const inputValue = 10n;
-
-    // Bridge
-    const convexStakingBridge = ConvexBridgeData.create(
-      {} as any,
-      EthAddress.random(),
-      EthAddress.fromString(convexBoosterAddr),
-    );
-
-    // Mock an interaction
-    convexStakingBridge.interactions = [
-      {
-        id: virtualAsset.id,
-        representingConvexToken: convexToken1,
-        valueStaked: inputValue,
-      },
-    ];
-
-    const expectedAssetValue = await convexStakingBridge.getInteractionPresentValue(virtualAsset.id, inputValue);
-
-    expect(expectedAssetValue[0]).toStrictEqual({
-      assetId: virtualAsset.id,
-      value: inputValue,
     });
   });
 });
