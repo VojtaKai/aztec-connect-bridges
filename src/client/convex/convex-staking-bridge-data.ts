@@ -35,9 +35,8 @@ export interface IPoolInfo {
 
 export class ConvexBridgeData implements BridgeDataFieldGetters {
   bridgeAddress = "0x123456789";
-  poolLength = 0;
   pools = new Map<string, IPoolInfo>();
-  deployedTokens = new Map<string, string>();
+  deployedClones = new Map<string, string>();
 
   constructor(
     private ethersProvider: Web3Provider,
@@ -71,20 +70,20 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
     auxData: bigint,
     inputValue: bigint,
   ): Promise<bigint[]> {
-    if (inputValue === 0n) {
-      throw new Error("Invalid Input Amount");
+    // Set pools, deploy representing Convex token and clone for each
+    if (this.pools.size === 0) {
+      await this.loadPool(32);
+      await this.loadPool(1);
     }
 
     if (inputAssetA.assetType != AztecAssetType.ERC20 || outputAssetA.assetType != AztecAssetType.ERC20) {
       throw new Error("Invalid Asset Type");
     }
 
-    await this.loadPools();
-
     // if oba undefined
     if (
-      this.deployedTokens.has(inputAssetA.erc20Address.toString()) &&
-      this.deployedTokens.has(outputAssetA.erc20Address.toString())
+      this.deployedClones.has(inputAssetA.erc20Address.toString()) &&
+      this.deployedClones.has(outputAssetA.erc20Address.toString())
     ) {
       throw new Error("Unknown Asset A");
     }
@@ -94,7 +93,7 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
     let curveLpToken: ICurveLpToken;
 
     // deposit
-    if (this.deployedTokens.get(inputAssetA.erc20Address.toString()) === outputAssetA.erc20Address.toString()) {
+    if (this.deployedClones.get(inputAssetA.erc20Address.toString()) === outputAssetA.erc20Address.toString()) {
       selectedPool = this.pools.get(inputAssetA.erc20Address.toString());
 
       if (!selectedPool) {
@@ -108,7 +107,7 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
       const balanceAfter = (await curveRewards.balanceOf(this.bridgeAddress)).toBigInt();
 
       return [balanceAfter - balanceBefore];
-    } else if (this.deployedTokens.get(outputAssetA.erc20Address.toString()) === inputAssetA.erc20Address.toString()) {
+    } else if (this.deployedClones.get(outputAssetA.erc20Address.toString()) === inputAssetA.erc20Address.toString()) {
       selectedPool = this.pools.get(outputAssetA.erc20Address.toString());
 
       if (!selectedPool) {
@@ -134,10 +133,14 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
   async getAPR(yieldAsset: AztecAsset): Promise<number> {
     // yieldAsset is the Representing Convex token (RCT)
     // Not taking into account how the deposited funds will change the yield
-    await this.loadPools();
+    // Set pools, deploy representing Convex token and clone for each
+    if (this.pools.size === 0) {
+      await this.loadPool(32);
+      await this.loadPool(1);
+    }
 
     const curveLpToken = (
-      Array.from(this.deployedTokens)?.find(token => token[1] === yieldAsset.erc20Address.toString()) as [
+      Array.from(this.deployedClones)?.find(token => token[1] === yieldAsset.erc20Address.toString()) as [
         string,
         string,
       ]
@@ -167,7 +170,11 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
   ): Promise<AssetValue[]> {
     // underlying token is the Curve LP token
 
-    await this.loadPools();
+    // Set pools, deploy representing Convex token and clone for each
+    if (this.pools.size === 0) {
+      await this.loadPool(32);
+      await this.loadPool(1);
+    }
 
     const selectedPool = this.pools.get(underlyingToken.erc20Address.toString());
 
@@ -180,8 +187,12 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
     return [{ assetId: underlyingToken.id, value: tokenSupply.toBigInt() }];
   }
 
-  async getUnderlyingAmount(representingConvexToken: AztecAsset, amount: bigint): Promise<UnderlyingAsset> {
-    await this.loadPools();
+  async getUnderlyingAmount(representingConvexAsset: AztecAsset, amount: bigint): Promise<UnderlyingAsset> {
+    // Set pools, deploy representing Convex token and clone for each
+    if (this.pools.size === 0) {
+      await this.loadPool(32);
+      await this.loadPool(1);
+    }
 
     const emptyAsset: AztecAsset = {
       id: 0,
@@ -190,7 +201,7 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
     };
 
     const curveLpTokenAddr = (
-      Array.from(this.deployedTokens)?.find(token => token[1] === representingConvexToken.erc20Address.toString()) as [
+      Array.from(this.deployedClones)?.find(token => token[1] === representingConvexAsset.erc20Address.toString()) as [
         string,
         string,
       ]
@@ -205,7 +216,7 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
 
     // withdraw
     const underlyingAssetAmount = await this.getExpectedOutput(
-      representingConvexToken,
+      representingConvexAsset,
       emptyAsset,
       underlyingAsset,
       emptyAsset,
@@ -224,21 +235,13 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
     };
   }
 
-  private async loadPools() {
-    const currentPoolLength = (await this.booster.poolLength()).toNumber();
-    if (currentPoolLength !== this.poolLength) {
-      let i = this.poolLength;
-      while (i < currentPoolLength) {
-        const poolInfo = await this.booster.poolInfo(BigNumber.from(i));
-        this.pools.set(poolInfo[0], {
-          poolId: i,
-          convexToken: poolInfo[1],
-          curveRewards: poolInfo[3],
-        });
-        this.deployedTokens.set(poolInfo[0], `0x100000000000000000000000000000000000000${i}`);
-        i++;
-      }
-    }
-    this.poolLength = currentPoolLength;
+  private async loadPool(poolId: number) {
+    const poolInfo = await this.booster.poolInfo(BigNumber.from(poolId));
+    this.pools.set(poolInfo[0], {
+      poolId: poolId,
+      convexToken: poolInfo[1],
+      curveRewards: poolInfo[3],
+    });
+    this.deployedClones.set(poolInfo[0], `0x100000000000000000000000000000000000000${poolId}`);
   }
 }

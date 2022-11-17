@@ -3,11 +3,9 @@
 pragma solidity >=0.8.4;
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-// import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-// import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 import {ISubsidy} from "../../aztec/interfaces/ISubsidy.sol";
 import {BridgeBase} from "../base/BridgeBase.sol";
@@ -239,17 +237,17 @@ contract ConvexStakingBridge is BridgeBase {
     }
 }
 
-contract RepresentingConvexToken is ERC20Upgradeable {
-    // constructor(string memory _tokenName, string memory _tokenSymbol) ERC20(_tokenName, _tokenSymbol) {}
+contract RepresentingConvexToken is ERC20Upgradeable, OwnableUpgradeable {
     function initialize(string memory _tokenName, string memory _tokenSymbol) public initializer {
         __ERC20_init(_tokenName, _tokenSymbol);
+        _transferOwnership(_msgSender());
     }
 
-    function mint(uint256 _amount) public {
+    function mint(uint256 _amount) public onlyOwner {
         _mint(_msgSender(), _amount);
     }
 
-    function burn(uint256 amount) public {
+    function burn(uint256 amount) public onlyOwner {
         _burn(_msgSender(), amount);
     }
 }

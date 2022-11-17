@@ -67,7 +67,6 @@ describe("convex staking bridge data", () => {
     // Mocks
     boosterMocked = {
       ...boosterMocked,
-      poolLength: jest.fn().mockResolvedValue(BigNumber.from(2)),
       poolInfo: jest
         .fn()
         .mockResolvedValueOnce([curveLpToken0, convexToken0, "", crvRewards0, "", ""])
@@ -114,7 +113,6 @@ describe("convex staking bridge data", () => {
     // Mocks
     boosterMocked = {
       ...boosterMocked,
-      poolLength: jest.fn().mockResolvedValue(BigNumber.from(2)),
       poolInfo: jest
         .fn()
         .mockResolvedValueOnce([curveLpToken0, convexToken0, "", crvRewards0, "", ""])
@@ -165,7 +163,6 @@ describe("convex staking bridge data", () => {
     // Mocks
     boosterMocked = {
       ...boosterMocked,
-      poolLength: jest.fn().mockResolvedValue(BigNumber.from(2)),
       poolInfo: jest
         .fn()
         .mockResolvedValueOnce([curveLpToken0, convexToken0, "", crvRewards0, "", ""])
@@ -199,7 +196,6 @@ describe("convex staking bridge data", () => {
     // Mocks
     boosterMocked = {
       ...boosterMocked,
-      poolLength: jest.fn().mockResolvedValue(BigNumber.from(2)),
       poolInfo: jest
         .fn()
         .mockResolvedValueOnce([curveLpToken0, convexToken0, "", crvRewards0, "", ""])
@@ -250,7 +246,6 @@ describe("convex staking bridge data", () => {
     // Mocks
     boosterMocked = {
       ...boosterMocked,
-      poolLength: jest.fn().mockResolvedValue(BigNumber.from(2)),
       poolInfo: jest
         .fn()
         .mockResolvedValueOnce([curveLpToken0, convexToken0, "", crvRewards0, "", ""])
