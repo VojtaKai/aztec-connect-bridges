@@ -240,7 +240,7 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
     }
 
     function _setupRepresentingConvexToken() internal {
-        representingConvexToken = bridge.deployedTokens(curveLpToken);
+        representingConvexToken = bridge.deployedClones(curveLpToken);
         vm.label(representingConvexToken, "Representing Convex Token");
     }
 }

@@ -33,7 +33,7 @@ contract ConvexStakingBridgeDeployment is BaseDeployment {
         for (uint256 i = 0; i < poolLength; i++) {
             (address curveLpToken, , , , , ) = BOOSTER.poolInfo(i);
             listAsset(curveLpToken, 100000);
-            listAsset(bridge.deployedTokens(curveLpToken), 100000);
+            listAsset(bridge.deployedClones(curveLpToken), 100000);
         }
     }
 }
