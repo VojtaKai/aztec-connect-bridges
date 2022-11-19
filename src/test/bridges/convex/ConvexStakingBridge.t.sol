@@ -13,8 +13,8 @@ import {IConvexBooster} from "../../../interfaces/convex/IConvexBooster.sol";
 contract ConvexStakingBridgeTest is BridgeTestBase {
     address private curveLpToken;
     address private convexLpToken;
-    address private RCTImplementation;
-    address private RCTClone;
+    address private rctImplementation;
+    address private rctClone;
     address private constant BOOSTER = 0xF403C135812408BFbE8713b5A23a04b3D48AAE31;
     address private staker;
     address private gauge;
@@ -27,14 +27,10 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
     address private rollupProcessor;
 
-    uint256 private constant INTERACTION_NONCE = 2**30;
-
     ConvexStakingBridge private bridge;
 
     uint256[] public invalidPids = [48, 11, 16]; // define invalid pids // 11 and 16 pools are closed
     mapping(uint256 => bool) public invalidPoolIds;
-
-    bool poolClosed;
 
     uint16[] public poolIdsToTest = new uint16[](5); // 5 test pool ids
 
@@ -47,6 +43,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
     event ShowDepositGas(uint gas);
     event ShowWithdrawGas(uint gas);
     event ShowRctImplementationAddress(address rctImplementation);
+    event ShowRewardsGreater(uint length);
 
     function setUp() public {
         rollupProcessor = address(this);
@@ -82,7 +79,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         bridge.convert(
             AztecTypes.AztecAsset(1, invalidCurveLpToken, AztecTypes.AztecAssetType.ERC20),
             emptyAsset,
-            AztecTypes.AztecAsset(100, RCTClone, AztecTypes.AztecAssetType.ERC20),
+            AztecTypes.AztecAsset(100, rctClone, AztecTypes.AztecAssetType.ERC20),
             emptyAsset,
             depositAmount,
             0,
@@ -106,7 +103,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         bridge.convert(
             AztecTypes.AztecAsset(1, invalidCurveLpToken, AztecTypes.AztecAssetType.VIRTUAL),
             emptyAsset,
-            AztecTypes.AztecAsset(100, RCTClone, AztecTypes.AztecAssetType.ERC20),
+            AztecTypes.AztecAsset(100, rctClone, AztecTypes.AztecAssetType.ERC20),
             emptyAsset,
             depositAmount,
             0,
@@ -126,7 +123,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         bridge.convert{value: depositAmount}(
             AztecTypes.AztecAsset(1, address(0), AztecTypes.AztecAssetType.ETH),
             emptyAsset,
-            AztecTypes.AztecAsset(100, RCTClone, AztecTypes.AztecAssetType.ERC20),
+            AztecTypes.AztecAsset(100, rctClone, AztecTypes.AztecAssetType.ERC20),
             emptyAsset,
             depositAmount,
             0,
@@ -149,7 +146,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
         vm.expectRevert(UnknownAssetA.selector);
         bridge.convert(
-            AztecTypes.AztecAsset(100, RCTClone, AztecTypes.AztecAssetType.ERC20),
+            AztecTypes.AztecAsset(100, rctClone, AztecTypes.AztecAssetType.ERC20),
             emptyAsset,
             AztecTypes.AztecAsset(1, invalidLpToken, AztecTypes.AztecAssetType.ERC20),
             emptyAsset,
@@ -176,13 +173,13 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         // make deposit for a pool at index `lastPoolId`
         _deposit(withdrawalAmount);
 
-        // withdraw using correct interaction but incorrect pool
+        // withdraw using incorrect pool - RCT Asset address won't match deployed Clone address of the provided Curve LP token 
         (incorrectCurveLpToken, , , , , ) = IConvexBooster(BOOSTER).poolInfo(anotherPoolId);
         vm.label(incorrectCurveLpToken, "Incorrect Curve LP Token Contract");
 
         vm.expectRevert(ErrorLib.InvalidOutputA.selector);
         bridge.convert(
-            AztecTypes.AztecAsset(100, RCTClone, AztecTypes.AztecAssetType.ERC20),
+            AztecTypes.AztecAsset(100, rctClone, AztecTypes.AztecAssetType.ERC20),
             emptyAsset,
             AztecTypes.AztecAsset(1, incorrectCurveLpToken, AztecTypes.AztecAssetType.ERC20),
             emptyAsset,
@@ -206,7 +203,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
         vm.expectRevert(InvalidAssetType.selector);
         bridge.convert(
-            AztecTypes.AztecAsset(100, RCTClone, AztecTypes.AztecAssetType.ERC20),
+            AztecTypes.AztecAsset(100, rctClone, AztecTypes.AztecAssetType.ERC20),
             emptyAsset,
             AztecTypes.AztecAsset(1, address(0), AztecTypes.AztecAssetType.ETH),
             emptyAsset,
@@ -231,7 +228,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         bridge.convert(
             AztecTypes.AztecAsset(1, curveLpToken, AztecTypes.AztecAssetType.ERC20),
             emptyAsset,
-            AztecTypes.AztecAsset(100, RCTClone, AztecTypes.AztecAssetType.ERC20),
+            AztecTypes.AztecAsset(100, rctClone, AztecTypes.AztecAssetType.ERC20),
             emptyAsset,
             depositAmount,
             0,
@@ -256,7 +253,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         bridge.convert(
             AztecTypes.AztecAsset(1, curveLpToken, AztecTypes.AztecAssetType.ERC20),
             emptyAsset,
-            AztecTypes.AztecAsset(100, RCTClone, AztecTypes.AztecAssetType.ERC20),
+            AztecTypes.AztecAsset(100, rctClone, AztecTypes.AztecAssetType.ERC20),
             emptyAsset,
             _depositAmount,
             0,
@@ -285,8 +282,8 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
                 continue;
             }
 
-            _setupBridge(poolIdsToTest[i]);
-            if (poolClosed) continue;
+            // bool poolClosed = _setupBridge(poolIdsToTest[i]);
+            // if (poolClosed) continue;
 
             _loadPool(poolIdsToTest[i]);
             _setupRepresentingConvexTokenClone();
@@ -301,8 +298,8 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         }
     }
 
-    function testWithdrawLpTokens(
-        // uint64 _withdrawalAmount,
+    function testWithdrawLpTokens999(
+        uint64 _withdrawalAmount,
         uint16 _poolId1,
         uint16 _poolId2,
         uint16 _poolId3,
@@ -317,20 +314,27 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
         bool testedPoolOpen = false;
 
+        // _setupTestPoolIds(poolLength, 4, 128, 45, 18, 98); // Pool id 4 intentionally selected -> to prevent possibility that all selected pools yield zero CRV and CVX rewards in the specified time frame.
+        // _setupTestPoolIds(poolLength, 18, 128, 128, 18, 4); // Pool id 4 intentionally selected -> to prevent possibility that all selected pools yield zero CRV and CVX rewards in the specified time frame.
         _setupTestPoolIds(poolLength, _poolId1, _poolId2, _poolId3, _poolId4, 4); // Pool id 4 intentionally selected -> to prevent possibility that all selected pools yield zero CRV and CVX rewards in the specified time frame.
 
-        for (uint256 i = 2; i < poolIdsToTest.length; i++) {
-        // for (uint256 i = 4; i < 5; i++) {
-            if (invalidPoolIds[poolIdsToTest[i]]) {
+        for (uint256 i = 0; i < poolIdsToTest.length; i++) {
+            if (_skipPool(i)) {
                 continue;
             }
 
+            testedPoolOpen = true;
+            // if (invalidPoolIds[poolIdsToTest[i]]) {
+            //     continue;
+            // }
+
+            // _setupBridge(poolIdsToTest[i]);
+            // if (poolClosed) {
+            //     continue;
+            // } else {
+            //     testedPoolOpen = true;
+            // }
             _setupBridge(poolIdsToTest[i]);
-            if (poolClosed) {
-                continue;
-            } else {
-                testedPoolOpen = true;
-            }
 
             _loadPool(poolIdsToTest[i]);
             _setupRepresentingConvexTokenClone();
@@ -348,9 +352,118 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         }
     }
 
+    function _skipPool(uint i) internal view returns(bool skipPool) {
+        skipPool = false;
+        uint16 _poolId = poolIdsToTest[i];
+
+        // Pool is among invalid pools
+        if (invalidPoolIds[_poolId]) {
+            skipPool = true;
+            return skipPool;
+        }
+
+        // Pool has already been tested
+        for (uint256 j = 0; j < i; j++) {
+            if (_poolId == poolIdsToTest[j]) {
+                skipPool = true;
+                return skipPool;
+            }
+        }
+
+        // Pool is shut down
+        (, , , , , bool poolClosed) = IConvexBooster(BOOSTER).poolInfo(_poolId);
+        skipPool = poolClosed;
+    }
+
+    function testWithdrawLpTokens11(
+        uint64 _withdrawalAmount
+        // uint16 _poolId1
+    ) public {
+        vm.assume(_withdrawalAmount > 4012207);
+
+        _withdrawLpTokens(_withdrawalAmount, 4); // poolId 4 selected intentionally to guarantee rewards are claimed in the limited timeframe
+
+        // Rewards successfully claimed check
+        assertGt(rewardsGreater.length, 0);
+    }
+
+    function testWithdrawLpTokens12(
+        uint64 _withdrawalAmount
+        // uint16 _poolId2
+    ) public {
+        vm.assume(_withdrawalAmount > 4012207);
+
+        uint16 pid = _prepPool(128);
+
+        _withdrawLpTokens(_withdrawalAmount, pid);
+    }
+
+    function testWithdrawLpTokens13(
+        uint64 _withdrawalAmount
+        // uint16 _poolId3
+    ) public {
+        vm.assume(_withdrawalAmount > 4012207);
+
+        uint16 pid = _prepPool(6855);
+
+        _withdrawLpTokens(_withdrawalAmount, pid);
+    }
+
+    function testWithdrawLpTokens14(
+        uint64 _withdrawalAmount
+        // uint16 _poolId4
+    ) public {
+        vm.assume(_withdrawalAmount > 4012207);
+
+        uint16 pid = _prepPool(45);
+
+        _withdrawLpTokens(_withdrawalAmount, pid);
+    }
+
+    function testWithdrawLpTokens15(
+        uint64 _withdrawalAmount
+        // uint16 _poolId5
+    ) public {
+        vm.assume(_withdrawalAmount > 4012207);
+
+        uint16 pid = _prepPool(8999);
+
+        _withdrawLpTokens(_withdrawalAmount, pid);
+    }
+
+    function _prepPool(uint16 _poolId) internal view returns(uint16 pid) {
+        uint256 poolLength = IConvexBooster(BOOSTER).poolLength();
+
+        pid = uint16(bound(_poolId, 0, poolLength - 1));
+    }
+
+    function _withdrawLpTokens(
+        uint64 _withdrawalAmount,
+        uint16 _poolId
+    ) internal {
+        if (invalidPoolIds[_poolId]) {
+            return;
+        }
+
+        // bool poolClosed = _setupBridge(_poolId);
+        // if (poolClosed) {
+        //     return;
+        // }
+
+        _loadPool(_poolId);
+        _setupRepresentingConvexTokenClone();
+        _setupSubsidy();
+
+        // deposit Curve LP tokens, set up totalSupply on CrvRewards
+        skip(1 days);
+        _deposit(_withdrawalAmount);
+
+        _withdraw(_withdrawalAmount, _poolId);
+    }
+
     function _withdraw(uint64 _withdrawalAmount, uint256 _poolId) internal {
         // transfer representing Convex tokens to the bridge
-        IERC20(RCTClone).transfer(address(bridge), _withdrawalAmount);
+        IERC20(rctClone).transfer(address(bridge), _withdrawalAmount);
 
         uint256 rewardsCRVBefore = IERC20(CRV_TOKEN).balanceOf(address(bridge));
         uint256 rewardsCVXBefore = IERC20(CVX_TOKEN).balanceOf(address(bridge));
@@ -359,7 +472,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
         skip(8 days);
         (uint256 outputValueA, uint256 outputValueB, bool isAsync) = bridge.convert(
-            AztecTypes.AztecAsset(100, RCTClone, AztecTypes.AztecAssetType.ERC20),
+            AztecTypes.AztecAsset(100, rctClone, AztecTypes.AztecAssetType.ERC20),
             emptyAsset,
             AztecTypes.AztecAsset(1, curveLpToken, AztecTypes.AztecAssetType.ERC20),
             emptyAsset,
@@ -391,12 +504,15 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         assertEq(IERC20(curveLpToken).balanceOf(rollupProcessor), _withdrawalAmount);
 
         // Check that representing Convex tokens were successfully burned
-        assertEq(IERC20(RCTClone).balanceOf(rollupProcessor), 0);
-        assertEq(IERC20(RCTClone).balanceOf(address(bridge)), 0);
+        assertEq(IERC20(rctClone).balanceOf(rollupProcessor), 0);
+        assertEq(IERC20(rctClone).balanceOf(address(bridge)), 0);
 
         // Claim subsidy at withdrawal
         SUBSIDY.withdraw(BENEFICIARY);
         assertGt(BENEFICIARY.balance, 0, "Subsidy was not claimed");
+
+        // Rewards successfully claimed check, some rewards may not have accumulated in the limited time frame
+        assertGe(rewardsGreater.length, 0);
     }
 
     /**
@@ -419,7 +535,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         (uint256 outputValueA, uint256 outputValueB, bool isAsync) = bridge.convert(
             AztecTypes.AztecAsset(1, curveLpToken, AztecTypes.AztecAssetType.ERC20),
             emptyAsset,
-            AztecTypes.AztecAsset(100, RCTClone, AztecTypes.AztecAssetType.ERC20),
+            AztecTypes.AztecAsset(100, rctClone, AztecTypes.AztecAssetType.ERC20),
             emptyAsset,
             _depositAmount,
             0,
@@ -436,19 +552,19 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         assertTrue(!isAsync, "Bridge is in async mode which it shouldn't");
 
         // check balance of minted rep convex tokens
-        assertEq(IERC20(RCTClone).balanceOf(address(bridge)), _depositAmount);
+        assertEq(IERC20(rctClone).balanceOf(address(bridge)), _depositAmount);
 
         // transfer representing Convex token to RollupProcessor
-        IERC20(RCTClone).transferFrom(address(bridge), rollupProcessor, _depositAmount);
-        assertEq(IERC20(RCTClone).balanceOf(rollupProcessor), _depositAmount);
+        IERC20(rctClone).transferFrom(address(bridge), rollupProcessor, _depositAmount);
+        assertEq(IERC20(rctClone).balanceOf(rollupProcessor), _depositAmount);
     }
 
     function _setupRepresentingConvexTokenClone() internal {
-        RCTImplementation = bridge.rctImplementation();
-        vm.label(RCTImplementation, "Representing Convex Token Implementation");
+        rctImplementation = bridge.rctImplementation();
+        vm.label(rctImplementation, "Representing Convex Token Implementation");
 
-        RCTClone = bridge.deployedClones(curveLpToken);
-        vm.label(RCTClone, "Representing Convex Token Clone");
+        rctClone = bridge.deployedClones(curveLpToken);
+        vm.label(rctClone, "Representing Convex Token Clone");
     }
 
     function _loadPool(uint _poolId) internal {
@@ -457,8 +573,8 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
     function _setupBridge(uint256 _poolId) internal {
         bridge = new ConvexStakingBridge(rollupProcessor);
-        (curveLpToken, convexLpToken, gauge, crvRewards, stash, poolClosed) = IConvexBooster(BOOSTER).poolInfo(_poolId);
-
+        (curveLpToken, convexLpToken, gauge, crvRewards, stash, ) = IConvexBooster(BOOSTER).poolInfo(_poolId);
+        
         // labels
         vm.label(address(bridge), "Bridge");
         vm.label(curveLpToken, "Curve LP Token Contract");
@@ -466,6 +582,10 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         vm.label(crvRewards, "CrvRewards Contract");
         vm.label(stash, "Stash Contract");
         vm.label(gauge, "Gauge Contract");
+    }
+
+    function _isPoolClosed(uint256 _poolId) internal view returns(bool poolClosed) {
+        (, , , , , poolClosed) = IConvexBooster(BOOSTER).poolInfo(_poolId);
     }
 
     function _setupSubsidy() internal {
@@ -476,7 +596,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         uint256 criteria = bridge.computeCriteria(
             AztecTypes.AztecAsset(1, curveLpToken, AztecTypes.AztecAssetType.ERC20),
             emptyAsset,
-            AztecTypes.AztecAsset(100, RCTClone, AztecTypes.AztecAssetType.ERC20),
+            AztecTypes.AztecAsset(100, rctClone, AztecTypes.AztecAssetType.ERC20),
             emptyAsset,
             0
         );
