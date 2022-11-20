@@ -1,6 +1,6 @@
 {
   "name": "@aztec/bridge-clients",
-  "version": "0.1.71",
+  "version": "0.1.73",
   "description": "This repo contains the solidity files and typescript helper class for all of the Aztec Connect Bridge Contracts",
   "repository": "git@github.com:AztecProtocol/aztec-connect-bridges.git",
   "license": "Apache-2.0",
@@ -12,7 +12,7 @@
     "compile:typechain": "forge build && typechain --target ethers-v5 --out-dir ./typechain-types './out/!(test*|Test*|*.t.sol|*.s.sol)/*.json'",
     "compile:client-dest": "yarn compile:typechain && tsc --project tsconfig.client-dest.json",
     "build": "forge build && yarn compile:client-dest",
-    "test:pinned:14000000": "forge test --fork-block-number 14000000 --match-contract 'Element|OracleHelper' --fork-url https://mainnet.infura.io/v3/9928b52099854248b3a096be07a6b23c",
+    "test:pinned:14000000": "forge test --fork-block-number 14000000 --match-contract 'Element' --fork-url https://mainnet.infura.io/v3/9928b52099854248b3a096be07a6b23c",
     "test:pinned:14970000": "forge test --fork-block-number 14970000 -m 'testRedistributionSuccessfulSwap|testRedistributionExitWhenICREqualsMCR' --fork-url https://mainnet.infura.io/v3/9928b52099854248b3a096be07a6b23c",
     "test:pinned:14972000": "forge test --fork-block-number 14972000 -m 'testRedistributionFailingSwap' --fork-url https://mainnet.infura.io/v3/9928b52099854248b3a096be07a6b23c",
     "test:pinned": "yarn test:pinned:14000000 && yarn test:pinned:14970000 && yarn test:pinned:14972000",
