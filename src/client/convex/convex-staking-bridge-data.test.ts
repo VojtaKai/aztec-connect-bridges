@@ -31,13 +31,13 @@ describe("convex staking bridge data", () => {
   const curveLpToken = {
     id: 1,
     assetType: AztecAssetType.ERC20,
-    erc20Address: EthAddress.fromString("0xe7A3b38c39F97E977723bd1239C3470702568e7B"),
+    erc20Address: EthAddress.fromString("0x0000000000000000000000000000000000000010"),
   };
 
   const representingConvexToken = {
     id: 100,
     assetType: AztecAssetType.ERC20,
-    erc20Address: EthAddress.fromString("0x1000000000000000000000000000000000000001"),
+    erc20Address: EthAddress.fromString("0x1001001001001001001001001001001001001001"),
   };
 
   const emptyAsset = {
@@ -47,16 +47,16 @@ describe("convex staking bridge data", () => {
   };
 
   // Addresses for mocks
-  const curveLpToken0 = "0x9fC689CCaDa600B6DF723D9E47D84d76664a1F23";
-  const convexToken0 = "0xA1c3492b71938E144ad8bE4c2fB6810b01A43dD8";
-  const crvRewards0 = "0x8B55351ea358e5Eda371575B031ee24F462d503e";
+  const curveLpToken0 = "0x0000000000000000000000000000000000000001";
+  const convexToken0 = "0x0000000000000000000000000000000000000002";
+  const crvRewards0 = "0x0000000000000000000000000000000000000003";
 
-  const curveLpToken1 = "0xe7A3b38c39F97E977723bd1239C3470702568e7B";
-  const convexToken1 = "0xbE665430e4C439aF6C92ED861939E60A963C6d0c";
-  const crvRewards1 = "0x14F02f3b47B407A7a0cdb9292AA077Ce9E124803";
+  const curveLpToken1 = "0x0000000000000000000000000000000000000010";
+  const convexToken1 = "0x0000000000000000000000000000000000000011";
+  const crvRewards1 = "0x0000000000000000000000000000000000000012";
 
   // Other addresses
-  const convexBoosterAddr = "0xF403C135812408BFbE8713b5A23a04b3D48AAE31";
+  const convexBoosterAddr = "0x5555555555555555555555555555555555555555";
 
   it("should return correct expected output - staking", async () => {
     const inputValue = 10n;
