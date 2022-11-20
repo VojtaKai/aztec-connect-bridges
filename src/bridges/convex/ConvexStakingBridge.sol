@@ -22,9 +22,8 @@ import {IRepConvexToken} from "../../interfaces/convex/IRepConvexToken.sol";
  without locking them in for an extended period of time. Plus earning CVX and possibly other rewards. 
  @notice Staked tokens can be withdrawn (unstaked) any time.
  @dev Convex Finance mints pool specific Convex LP token, however, not for the staking user (the bridge) directly.
- Hence, for each pool is deployed a new token, Representing Convex Token, RCT. RCT represents how much Convex token was minted / burned
- and is minted / burned accordingly directly for the bridge, Rollup Processor resp.
- @dev RCT ERC20 token is deployed for each loaded pool. This token identically matches the minted / burned Convex token in the Convex Finance network. 
+ RCT ERC20 token is deployed for each loaded pool. This token mirrors Convex token balance for the bridge.
+ The difference is that RCT is owned directly by the bridge.
  @dev Synchronous and stateless bridge
  @author Vojtech Kaiser
  */
@@ -243,7 +242,7 @@ contract ConvexStakingBridge is BridgeBase {
 
 /**
  @notice ERC20 token that represents pool specific Convex LP token. RCT is deployed for a specific pool that has been loaded.
- @notice RCT mirrors balance of Convex LP token. Can only be minted for the owner (generally the bridge) by the owner.
+ @notice RCT mirrors balance of Convex LP token. Can only be minted for the owner (the bridge) by the owner.
  @notice RCT is an ERC20 upgradable token which allows initialization after the time it was deployed.
  @dev RCT implementation is deployed on bridge contract deployments.
  @dev RCT is a proxied contract and is called via a clone that is created for each loaded pool. 
