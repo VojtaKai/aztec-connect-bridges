@@ -29,7 +29,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
     ConvexStakingBridge private bridge;
 
-    uint256[] public invalidPids = [48, 11, 16]; // define invalid pids // 11 and 16 pools are closed
+    uint256[] public invalidPids = [48]; // define invalid pids
     mapping(uint256 => bool) public invalidPoolIds;
 
     uint16[] public poolIdsToTest = new uint16[](5); // 5 test pool ids
@@ -277,14 +277,11 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         _setupTestPoolIds(poolLength, _poolId1, _poolId2, _poolId3, _poolId4, _poolId5);
 
         for (uint256 i = 0; i < poolIdsToTest.length; i++) {
-        // for (uint256 i = 4; i < 5; i++) {
-            if (invalidPoolIds[poolIdsToTest[i]]) {
+            if (_skipPool(i)) {
                 continue;
             }
 
-            // bool poolClosed = _setupBridge(poolIdsToTest[i]);
-            // if (poolClosed) continue;
-
+            _setupBridge(poolIdsToTest[i]);
             _loadPool(poolIdsToTest[i]);
             _setupRepresentingConvexTokenClone();
             _setupSubsidy();
@@ -298,24 +295,19 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         }
     }
 
-    function testWithdrawLpTokens999(
+    function testWithdrawLpTokens(
         uint64 _withdrawalAmount,
         uint16 _poolId1,
         uint16 _poolId2,
         uint16 _poolId3,
         uint16 _poolId4
     ) public {
-        // vm.assume(_withdrawalAmount > 4012207535227600);
-        uint64 _withdrawalAmount = 4012207;
-        // vm.assume(_withdrawalAmount > 18446744073709551612);
+        vm.assume(_withdrawalAmount > 4012207);
+
         uint256 poolLength = IConvexBooster(BOOSTER).poolLength();
 
-        delete rewardsGreater; // clear array on test start
+        bool testedPoolOpen;
 
-        bool testedPoolOpen = false;
-
-        // _setupTestPoolIds(poolLength, 4, 128, 45, 18, 98); // Pool id 4 intentionally selected -> to prevent possibility that all selected pools yield zero CRV and CVX rewards in the specified time frame.
-        // _setupTestPoolIds(poolLength, 18, 128, 128, 18, 4); // Pool id 4 intentionally selected -> to prevent possibility that all selected pools yield zero CRV and CVX rewards in the specified time frame.
         _setupTestPoolIds(poolLength, _poolId1, _poolId2, _poolId3, _poolId4, 4); // Pool id 4 intentionally selected -> to prevent possibility that all selected pools yield zero CRV and CVX rewards in the specified time frame.
 
         for (uint256 i = 0; i < poolIdsToTest.length; i++) {
@@ -324,16 +316,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
             }
 
             testedPoolOpen = true;
-            // if (invalidPoolIds[poolIdsToTest[i]]) {
-            //     continue;
-            // }
 
-            // _setupBridge(poolIdsToTest[i]);
-            // if (poolClosed) {
-            //     continue;
-            // } else {
-            //     testedPoolOpen = true;
-            // }
             _setupBridge(poolIdsToTest[i]);
 
             _loadPool(poolIdsToTest[i]);
@@ -353,7 +336,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
     }
 
     function _skipPool(uint i) internal view returns(bool skipPool) {
-        skipPool = false;
         uint16 _poolId = poolIdsToTest[i];
 
         // Pool is among invalid pools
@@ -375,100 +357,12 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         skipPool = poolClosed;
     }
 
-    function testWithdrawLpTokens11(
-        uint64 _withdrawalAmount
-        // uint16 _poolId1
-    ) public {
-        vm.assume(_withdrawalAmount > 4012207);
-
-        _withdrawLpTokens(_withdrawalAmount, 4); // poolId 4 selected intentionally to guarantee rewards are claimed in the limited timeframe
-
-        // Rewards successfully claimed check
-        assertGt(rewardsGreater.length, 0);
-    }
-
-    function testWithdrawLpTokens12(
-        uint64 _withdrawalAmount
-        // uint16 _poolId2
-    ) public {
-        vm.assume(_withdrawalAmount > 4012207);
-
-        uint16 pid = _prepPool(128);
-
-        _withdrawLpTokens(_withdrawalAmount, pid);
-    }
-
-    function testWithdrawLpTokens13(
-        uint64 _withdrawalAmount
-        // uint16 _poolId3
-    ) public {
-        vm.assume(_withdrawalAmount > 4012207);
-
-        uint16 pid = _prepPool(6855);
-
-        _withdrawLpTokens(_withdrawalAmount, pid);
-    }
-
-    function testWithdrawLpTokens14(
-        uint64 _withdrawalAmount
-        // uint16 _poolId4
-    ) public {
-        vm.assume(_withdrawalAmount > 4012207);
-
-        uint16 pid = _prepPool(45);
-
-        _withdrawLpTokens(_withdrawalAmount, pid);
-    }
-
-    function testWithdrawLpTokens15(
-        uint64 _withdrawalAmount
-        // uint16 _poolId5
-    ) public {
-        vm.assume(_withdrawalAmount > 4012207);
-
-        uint16 pid = _prepPool(8999);
-
-        _withdrawLpTokens(_withdrawalAmount, pid);
-    }
-
-    function _prepPool(uint16 _poolId) internal view returns(uint16 pid) {
-        uint256 poolLength = IConvexBooster(BOOSTER).poolLength();
-
-        pid = uint16(bound(_poolId, 0, poolLength - 1));
-    }
-
-    function _withdrawLpTokens(
-        uint64 _withdrawalAmount,
-        uint16 _poolId
-    ) internal {
-        if (invalidPoolIds[_poolId]) {
-            return;
-        }
-
-        // bool poolClosed = _setupBridge(_poolId);
-        // if (poolClosed) {
-        //     return;
-        // }
-
-        _loadPool(_poolId);
-        _setupRepresentingConvexTokenClone();
-        _setupSubsidy();
-
-        // deposit Curve LP tokens, set up totalSupply on CrvRewards
-        skip(1 days);
-        _deposit(_withdrawalAmount);
-
-        _withdraw(_withdrawalAmount, _poolId);
-    }
-
     function _withdraw(uint64 _withdrawalAmount, uint256 _poolId) internal {
         // transfer representing Convex tokens to the bridge
         IERC20(rctClone).transfer(address(bridge), _withdrawalAmount);
 
         uint256 rewardsCRVBefore = IERC20(CRV_TOKEN).balanceOf(address(bridge));
         uint256 rewardsCVXBefore = IERC20(CVX_TOKEN).balanceOf(address(bridge));
-
-        uint gas1 = gasleft();
 
         skip(8 days);
         (uint256 outputValueA, uint256 outputValueB, bool isAsync) = bridge.convert(
@@ -482,10 +376,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
             BENEFICIARY
         );
         rewind(9 days);
-
-        uint gas2 = gasleft();
-
-        emit ShowWithdrawGas(gas1 - gas2);
 
         uint256 rewardsCRVAfter = IERC20(CRV_TOKEN).balanceOf(address(bridge));
         uint256 rewardsCVXAfter = IERC20(CVX_TOKEN).balanceOf(address(bridge));
@@ -528,10 +418,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         // transfer CURVE LP Tokens from RollUpProcessor to the bridge
         IERC20(curveLpToken).transfer(address(bridge), _depositAmount);
 
-        uint gas1 = gasleft();
-
-        // bridge.deployedClones(curveLpToken) == cloneAddress and we move funds through it (not the implementation - not the representingConvexToken)
-
         (uint256 outputValueA, uint256 outputValueB, bool isAsync) = bridge.convert(
             AztecTypes.AztecAsset(1, curveLpToken, AztecTypes.AztecAssetType.ERC20),
             emptyAsset,
@@ -542,10 +428,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
             0,
             BENEFICIARY
         );
-
-        uint gas2 = gasleft();
-
-        emit ShowDepositGas(gas1 - gas2);
 
         assertEq(outputValueA, _depositAmount);
         assertEq(outputValueB, 0, "Output value B is not 0.");
@@ -584,10 +466,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         vm.label(gauge, "Gauge Contract");
     }
 
-    function _isPoolClosed(uint256 _poolId) internal view returns(bool poolClosed) {
-        (, , , , , poolClosed) = IConvexBooster(BOOSTER).poolInfo(_poolId);
-    }
-
     function _setupSubsidy() internal {
         // Set ETH balance of bridge and BENEFICIARY to 0 for clarity (somebody sent ETH to that address on mainnet)
         vm.deal(address(bridge), 0);
@@ -616,8 +494,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         uint16 _poolId4,
         uint16 _poolId5
     ) internal {
-        delete poolIdsToTest;
-
         // test pools filled with limitated poolIds
         poolIdsToTest.push(uint16(bound(_poolId1, 0, _poolLength - 1)));
         poolIdsToTest.push(uint16(bound(_poolId2, 0, _poolLength - 1)));

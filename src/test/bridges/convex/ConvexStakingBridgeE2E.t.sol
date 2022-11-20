@@ -27,7 +27,6 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
     // The reference to the convex staking bridge
     ConvexStakingBridge private bridge;
 
-    // uint256[] public invalidPids = [48, 11, 16, 108, 0]; // define invalid pids
     uint256[] public invalidPids = [48]; // define invalid pids
 
     mapping(uint256 => bool) public invalidPoolIds;
@@ -36,7 +35,7 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
     uint256 private bridgeId;
 
 
-    // 5 arbitrarily selected pool ids
+    // 5 randomly selected pool ids
     uint16[] private poolIdsToTest = new uint16[](5);
 
     // Bridge response
@@ -57,98 +56,12 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
         vm.label(BENEFICIARY, "Beneficiary");
     }
 
-    function testStakeWithdrawFlow1(uint64 _depositAmount, uint16 _poolId1) public {
-        vm.assume(_depositAmount > 1);
-
-        uint16 pid = _prepPool(_poolId1);
-
-        _stakeWithdrawFlow(_depositAmount, pid);
-    }
-
-    function testStakeWithdrawFlow2(uint64 _depositAmount, uint16 _poolId2) public {
-        vm.assume(_depositAmount > 1);
-
-        uint16 pid = _prepPool(_poolId2);
-
-        _stakeWithdrawFlow(_depositAmount, pid);
-    }
-
-    function testStakeWithdrawFlow3(uint64 _depositAmount, uint16 _poolId3) public {
-        vm.assume(_depositAmount > 1);
-
-        uint16 pid = _prepPool(_poolId3);
-
-        _stakeWithdrawFlow(_depositAmount, pid);
-    }
-
-    function testStakeWithdrawFlow4(uint64 _depositAmount, uint16 _poolId4) public {
-        vm.assume(_depositAmount > 1);
-
-        uint16 pid = _prepPool(_poolId4);
-
-        _stakeWithdrawFlow(_depositAmount, pid);
-    }
-
-    function testStakeWithdrawFlow5(uint64 _depositAmount, uint16 _poolId5) public {
-        vm.assume(_depositAmount > 1);
-
-        uint16 pid = _prepPool(_poolId5);
-
-        _stakeWithdrawFlow(_depositAmount, pid);
-    }
-
-    function _prepPool(uint16 _poolId) internal view returns(uint16 pid) {
-        uint256 poolLength = IConvexBooster(BOOSTER).poolLength();
-
-        pid = uint16(bound(_poolId, 0, poolLength - 1));
-    }
-
-    function _stakeWithdrawFlow(uint64 _depositAmount, uint16 _poolId) internal {
-        if (invalidPoolIds[_poolId]) {
-            return;
-        }
-
-        // bool poolClosed = _setupBridge(_poolId);
-        // if (poolClosed) return;
-
-        _loadPool(_poolId);
-        _setupRepresentingConvexTokenClone();
-        _setupSubsidy();
-
-        vm.startPrank(MULTI_SIG);
-        // Add the new bridge and set its initial gasLimit
-        ROLLUP_PROCESSOR.setSupportedBridge(address(bridge), 2500000);
-        // Add Assets and set their initial gasLimits
-        ROLLUP_PROCESSOR.setSupportedAsset(curveLpToken, 100000);
-        ROLLUP_PROCESSOR.setSupportedAsset(rctClone, 100000);
-        vm.stopPrank();
-
-        // Fetch the id of the convex staking bridge
-        bridgeId = ROLLUP_PROCESSOR.getSupportedBridgesLength();
-
-        // get Aztec assets
-        AztecTypes.AztecAsset memory curveLpAsset = ROLLUP_ENCODER.getRealAztecAsset(curveLpToken);
-        AztecTypes.AztecAsset memory representingConvexAsset = ROLLUP_ENCODER.getRealAztecAsset(
-            rctClone
-        );
-
-        // // Mint depositAmount of CURVE LP tokens for RollUp Processor
-        deal(curveLpToken, address(ROLLUP_PROCESSOR), _depositAmount);
-
-        _deposit(bridgeId, curveLpAsset, representingConvexAsset, _depositAmount);
-
-        _withdraw(bridgeId, representingConvexAsset, curveLpAsset, _depositAmount);
-    }
-
     /**
     @notice Tests staking and withdrawing by constructing bridgeCallData and passing it directly
     to RollupProcessor function that initializes the interaction with the bridge.
-    @notice Compound test for all available Curve LP tokens.
-    @dev Each interaction with a bridge gets a new nonce. Starts at 0 and increments by 32.
-    @dev Virtual asset on output ignores virtual asset definition. It sets the virtual asset's ID to always be equal to interaction nonce.
-    @dev Virtual asset on input takes on ID of the defined virtual asset.
+    @notice Compound test for all available pools. 5 pools are randomly selected and tested.
     */
-    function testStakeWithdrawFlow1234(
+    function testStakeWithdrawFlow(
         uint64 _depositAmount,
         uint16 _poolId1,
         uint16 _poolId2,
@@ -160,7 +73,7 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
 
         uint256 poolLength = IConvexBooster(BOOSTER).poolLength();
 
-        _setupTestPoolIds(poolLength, _poolId1, _poolId3, _poolId3, _poolId4, _poolId5);
+        _setupTestPoolIds(poolLength, _poolId1, _poolId2, _poolId3, _poolId4, _poolId5);
 
         for (uint256 i = 0; i < poolIdsToTest.length; i++) {
             if (_skipPool(i)) {
@@ -200,7 +113,6 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
     }
 
     function _skipPool(uint i) internal view returns(bool skipPool) {
-        skipPool = false;
         uint16 _poolId = poolIdsToTest[i];
 
         // Pool is among invalid pools
@@ -220,53 +132,6 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
         // Pool is shut down
         (, , , , , bool poolClosed) = IConvexBooster(BOOSTER).poolInfo(_poolId);
         skipPool = poolClosed;
-    }
-
-    function testStakeWithdrawFlowRestricted(
-        uint64 _depositAmount
-        // uint16 _poolId1
-    ) public {
-        vm.assume(_depositAmount > 1);
-
-        uint256 poolLength = IConvexBooster(BOOSTER).poolLength();
-
-        // uint16 pid = uint16(bound(_poolId1, 0, poolLength - 1));
-        uint16 pid = 0;
-
-        if (invalidPoolIds[pid]) {
-            return;
-        }
-
-        // bool poolClosed = _setupBridge(pid);
-        // if (poolClosed) return;
-
-        _loadPool(pid);
-        _setupRepresentingConvexTokenClone();
-        _setupSubsidy();
-
-        vm.startPrank(MULTI_SIG);
-        // Add the new bridge and set its initial gasLimit
-        ROLLUP_PROCESSOR.setSupportedBridge(address(bridge), 2500000);
-        // Add Assets and set their initial gasLimits
-        ROLLUP_PROCESSOR.setSupportedAsset(curveLpToken, 100000);
-        ROLLUP_PROCESSOR.setSupportedAsset(rctClone, 100000);
-        vm.stopPrank();
-
-        // Fetch the id of the convex staking bridge
-        bridgeId = ROLLUP_PROCESSOR.getSupportedBridgesLength();
-
-        // get Aztec assets
-        AztecTypes.AztecAsset memory curveLpAsset = ROLLUP_ENCODER.getRealAztecAsset(curveLpToken);
-        AztecTypes.AztecAsset memory representingConvexAsset = ROLLUP_ENCODER.getRealAztecAsset(
-            rctClone
-        );
-
-        // // Mint depositAmount of CURVE LP tokens for RollUp Processor
-        deal(curveLpToken, address(ROLLUP_PROCESSOR), _depositAmount);
-
-        _deposit(bridgeId, curveLpAsset, representingConvexAsset, _depositAmount);
-
-        _withdraw(bridgeId, representingConvexAsset, curveLpAsset, _depositAmount);
     }
 
     function _deposit(
@@ -366,10 +231,6 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
         vm.label(gauge, "Gauge Contract");
     }
 
-    function _isPoolClosed(uint256 _poolId) internal view returns(bool poolClosed) {
-        (, , , , , poolClosed) = IConvexBooster(BOOSTER).poolInfo(_poolId);
-    }
-
     function _setupTestPoolIds(
         uint256 _poolLength,
         uint16 _poolId1,
@@ -378,8 +239,6 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
         uint16 _poolId4,
         uint16 _poolId5
     ) internal {
-        delete poolIdsToTest;
-
         // test pools filled with limitated poolIds
         poolIdsToTest.push(uint16(bound(_poolId1, 2, _poolLength - 1)));
         poolIdsToTest.push(uint16(bound(_poolId2, 2, _poolLength - 1)));

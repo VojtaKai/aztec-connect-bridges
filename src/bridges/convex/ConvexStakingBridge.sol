@@ -191,13 +191,9 @@ contract ConvexStakingBridge is BridgeBase {
     @notice Deploying RCT token for the specific pool is part of the loading.
     @notice Set allowance for Booster and Rollup Processor to manipulate bridge's Curve LP tokens and RCT (through RCT Clone).
     @notice Setup subsidy.
-    // @notice Pool can only be loaded once
     */
     function loadPool(uint _poolId) external {
         (address curveLpToken, address convexToken, , address curveRewards, , ) = BOOSTER.poolInfo(_poolId);
-        // if (pools[curveLpToken].curveRewards != address(0)) {
-        //     revert PoolAlreadyLoaded();
-        // }
         pools[curveLpToken] = PoolInfo(uint96(_poolId), convexToken, curveRewards);
 
         // deploy clone, log clone address
