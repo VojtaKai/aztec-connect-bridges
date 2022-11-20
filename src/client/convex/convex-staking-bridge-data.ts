@@ -242,6 +242,6 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
       convexToken: poolInfo[1],
       curveRewards: poolInfo[3],
     });
-    this.deployedClones.set(poolInfo[0], `0x100000000000000000000000000000000000000${poolId}`);
+    this.deployedClones.set(poolInfo[0], `0x100100100100100100100100100100100100100${poolId}`);
   }
 }
