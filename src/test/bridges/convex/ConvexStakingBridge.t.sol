@@ -39,12 +39,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
     error InvalidAssetType();
     error UnknownAssetA();
 
-
-    event ShowDepositGas(uint gas);
-    event ShowWithdrawGas(uint gas);
-    event ShowRctImplementationAddress(address rctImplementation);
-    event ShowRewardsGreater(uint length);
-
     function setUp() public {
         rollupProcessor = address(this);
         staker = IConvexBooster(BOOSTER).staker();
@@ -70,7 +64,6 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         // labels
         vm.label(invalidCurveLpToken, "Invalid Curve LP Token Address");
 
-        
         _setupBridge(112);
         _loadPool(112);
         _setupRepresentingConvexTokenClone();
@@ -173,7 +166,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         // make deposit for a pool at index `lastPoolId`
         _deposit(withdrawalAmount);
 
-        // withdraw using incorrect pool - RCT Asset address won't match deployed Clone address of the provided Curve LP token 
+        // withdraw using incorrect pool - RCT Asset address won't match deployed Clone address of the provided Curve LP token
         (incorrectCurveLpToken, , , , , ) = IConvexBooster(BOOSTER).poolInfo(anotherPoolId);
         vm.label(incorrectCurveLpToken, "Incorrect Curve LP Token Contract");
 
@@ -335,8 +328,8 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         }
     }
 
-    function _skipPool(uint i) internal view returns(bool skipPool) {
-        uint16 _poolId = poolIdsToTest[i];
+    function _skipPool(uint256 _i) internal view returns (bool skipPool) {
+        uint16 _poolId = poolIdsToTest[_i];
 
         // Pool is among invalid pools
         if (invalidPoolIds[_poolId]) {
@@ -345,7 +338,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         }
 
         // Pool has already been tested
-        for (uint256 j = 0; j < i; j++) {
+        for (uint256 j = 0; j < _i; j++) {
             if (_poolId == poolIdsToTest[j]) {
                 skipPool = true;
                 return skipPool;
@@ -442,21 +435,21 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
     }
 
     function _setupRepresentingConvexTokenClone() internal {
-        rctImplementation = bridge.rctImplementation();
+        rctImplementation = bridge.RCT_IMPLEMENTATION();
         vm.label(rctImplementation, "Representing Convex Token Implementation");
 
         rctClone = bridge.deployedClones(curveLpToken);
         vm.label(rctClone, "Representing Convex Token Clone");
     }
 
-    function _loadPool(uint _poolId) internal {
+    function _loadPool(uint256 _poolId) internal {
         bridge.loadPool(_poolId);
     }
 
     function _setupBridge(uint256 _poolId) internal {
         bridge = new ConvexStakingBridge(rollupProcessor);
         (curveLpToken, convexLpToken, gauge, crvRewards, stash, ) = IConvexBooster(BOOSTER).poolInfo(_poolId);
-        
+
         // labels
         vm.label(address(bridge), "Bridge");
         vm.label(curveLpToken, "Curve LP Token Contract");

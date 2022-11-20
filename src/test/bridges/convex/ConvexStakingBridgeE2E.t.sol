@@ -34,14 +34,8 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
     // To store the id of the convex staking bridge after being added
     uint256 private bridgeId;
 
-
     // 5 randomly selected pool ids
     uint16[] private poolIdsToTest = new uint16[](5);
-
-    // Bridge response
-    uint256 private outputValueA;
-    uint256 private outputValueB;
-    bool private isAsync;
 
     function setUp() public {
         staker = IConvexBooster(BOOSTER).staker();
@@ -99,9 +93,7 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
 
             // get Aztec assets
             AztecTypes.AztecAsset memory curveLpAsset = ROLLUP_ENCODER.getRealAztecAsset(curveLpToken);
-            AztecTypes.AztecAsset memory representingConvexAsset = ROLLUP_ENCODER.getRealAztecAsset(
-                rctClone
-            );
+            AztecTypes.AztecAsset memory representingConvexAsset = ROLLUP_ENCODER.getRealAztecAsset(rctClone);
 
             // // Mint depositAmount of CURVE LP tokens for RollUp Processor
             deal(curveLpToken, address(ROLLUP_PROCESSOR), _depositAmount);
@@ -110,28 +102,6 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
 
             _withdraw(bridgeId, representingConvexAsset, curveLpAsset, _depositAmount);
         }
-    }
-
-    function _skipPool(uint i) internal view returns(bool skipPool) {
-        uint16 _poolId = poolIdsToTest[i];
-
-        // Pool is among invalid pools
-        if (invalidPoolIds[_poolId]) {
-            skipPool = true;
-            return skipPool;
-        }
-
-        // Pool has already been tested
-        for (uint256 j = 0; j < i; j++) {
-            if (_poolId == poolIdsToTest[j]) {
-                skipPool = true;
-                return skipPool;
-            }
-        }
-
-        // Pool is shut down
-        (, , , , , bool poolClosed) = IConvexBooster(BOOSTER).poolInfo(_poolId);
-        skipPool = poolClosed;
     }
 
     function _deposit(
@@ -152,7 +122,7 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
 
         // move time forward to have claimable amount on beneficiary
         skip(1 days);
-        (outputValueA, outputValueB, isAsync) = ROLLUP_ENCODER.processRollupAndGetBridgeResult();
+        (uint256 outputValueA, uint256 outputValueB, bool isAsync) = ROLLUP_ENCODER.processRollupAndGetBridgeResult();
 
         assertEq(outputValueA, _depositAmount); // number of staked tokens match deposited LP Tokens
         assertEq(outputValueB, 0, "Output value B is not 0");
@@ -179,7 +149,7 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
         );
 
         skip(1 days); // move time forward to have claimable amount on beneficiary
-        (outputValueA, outputValueB, isAsync) = ROLLUP_ENCODER.processRollupAndGetBridgeResult();
+        (uint256 outputValueA, uint256 outputValueB, bool isAsync) = ROLLUP_ENCODER.processRollupAndGetBridgeResult();
         rewind(2 days); // move time back to original for the next bridge run
 
         assertEq(outputValueA, _depositAmount); // number of withdrawn tokens match deposited LP Tokens
@@ -253,15 +223,37 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
         }
     }
 
-    function _loadPool(uint _poolId) internal {
+    function _loadPool(uint256 _poolId) internal {
         bridge.loadPool(_poolId);
     }
 
     function _setupRepresentingConvexTokenClone() internal {
-        rctImplementation = bridge.rctImplementation();
+        rctImplementation = bridge.RCT_IMPLEMENTATION();
         vm.label(rctImplementation, "Representing Convex Token Implementation");
 
         rctClone = bridge.deployedClones(curveLpToken);
         vm.label(rctClone, "Representing Convex Token Clone");
+    }
+
+    function _skipPool(uint256 _i) internal view returns (bool skipPool) {
+        uint16 _poolId = poolIdsToTest[_i];
+
+        // Pool is among invalid pools
+        if (invalidPoolIds[_poolId]) {
+            skipPool = true;
+            return skipPool;
+        }
+
+        // Pool has already been tested
+        for (uint256 j = 0; j < _i; j++) {
+            if (_poolId == poolIdsToTest[j]) {
+                skipPool = true;
+                return skipPool;
+            }
+        }
+
+        // Pool is shut down
+        (, , , , , bool poolClosed) = IConvexBooster(BOOSTER).poolInfo(_poolId);
+        skipPool = poolClosed;
     }
 }

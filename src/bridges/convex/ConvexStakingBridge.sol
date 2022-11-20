@@ -42,7 +42,7 @@ contract ConvexStakingBridge is BridgeBase {
     IConvexBooster public constant BOOSTER = IConvexBooster(0xF403C135812408BFbE8713b5A23a04b3D48AAE31);
 
     // Representing Convex Token implementation address
-    address public immutable rctImplementation;
+    address public immutable RCT_IMPLEMENTATION;
 
     // Pools
     uint256 public poolsLength;
@@ -58,7 +58,7 @@ contract ConvexStakingBridge is BridgeBase {
     error PoolAlreadyLoaded();
 
     constructor(address _rollupProcessor) BridgeBase(_rollupProcessor) {
-        rctImplementation = address(new RepresentingConvexToken());
+        RCT_IMPLEMENTATION = address(new RepresentingConvexToken());
     }
 
     /**
@@ -105,13 +105,10 @@ contract ConvexStakingBridge is BridgeBase {
             revert InvalidAssetType();
         }
 
-        address inputDeployedClone =  deployedClones[_inputAssetA.erc20Address];
+        address inputDeployedClone = deployedClones[_inputAssetA.erc20Address];
         address outputDeployedClone = deployedClones[_outputAssetA.erc20Address];
 
-        if (
-            inputDeployedClone == address(0) &&
-            outputDeployedClone == address(0)
-        ) {
+        if (inputDeployedClone == address(0) && outputDeployedClone == address(0)) {
             revert UnknownAssetA(); // invalid address or pool has not been loaded yet/token not deployed yet  --> this will need to get tested
         }
 
@@ -135,15 +132,22 @@ contract ConvexStakingBridge is BridgeBase {
         _claimSubsidy(SUBSIDY, _inputAssetA, _inputAssetB, _outputAssetA, _outputAssetB, _rollupBeneficiary);
     }
 
-    function _claimSubsidy(ISubsidy _SUBSIDY, AztecTypes.AztecAsset calldata _inputAssetA, AztecTypes.AztecAsset calldata _inputAssetB, AztecTypes.AztecAsset calldata _outputAssetA, AztecTypes.AztecAsset calldata _outputAssetB, address _rollupBeneficiary) internal {
-        _SUBSIDY.claimSubsidy(
+    function _claimSubsidy(
+        ISubsidy _subsidy,
+        AztecTypes.AztecAsset calldata _inputAssetA,
+        AztecTypes.AztecAsset calldata _inputAssetB,
+        AztecTypes.AztecAsset calldata _outputAssetA,
+        AztecTypes.AztecAsset calldata _outputAssetB,
+        address _rollupBeneficiary
+    ) internal {
+        _subsidy.claimSubsidy(
             computeCriteria(_inputAssetA, _inputAssetB, _outputAssetA, _outputAssetB, 0),
             _rollupBeneficiary
         );
     }
 
-     /** 
-    @notice Internal function to withdraw Curve LP tokens
+    /** 
+    @notice Internal function to deposit Curve LP tokens.
     @notice RCT is minted for the bridge. Symbolizes Convex token minted for the staked Curve LP tokens.
     */
     function _deposit(
@@ -162,8 +166,8 @@ contract ConvexStakingBridge is BridgeBase {
         IRepConvexToken(_outputAssetA.erc20Address).mint(_totalInputValue);
     }
 
-     /** 
-    @notice Internal function to withdraw Curve LP tokens
+    /** 
+    @notice Internal function to deposit Curve LP tokens.
     @notice RCT is burned for the bridge.
     */
     function _withdraw(
@@ -174,7 +178,7 @@ contract ConvexStakingBridge is BridgeBase {
     ) internal returns (uint256 outputValueA) {
         uint256 startCurveLpTokens = ICurveLpToken(_outputAssetA.erc20Address).balanceOf(address(this));
 
-        // transfer CONVEX tokens from CrvRewards back to the bridge
+        // transfer ownership of Convex tokens from CrvRewards back to the bridge
         ICurveRewards(_selectedPool.curveRewards).withdraw(_totalInputValue, true); // always claim rewards
 
         BOOSTER.withdraw(_selectedPool.poolId, _totalInputValue);
@@ -192,17 +196,17 @@ contract ConvexStakingBridge is BridgeBase {
     @notice Set allowance for Booster and Rollup Processor to manipulate bridge's Curve LP tokens and RCT (through RCT Clone).
     @notice Setup subsidy.
     */
-    function loadPool(uint _poolId) external {
+    function loadPool(uint256 _poolId) external {
         (address curveLpToken, address convexToken, , address curveRewards, , ) = BOOSTER.poolInfo(_poolId);
         pools[curveLpToken] = PoolInfo(uint96(_poolId), convexToken, curveRewards);
 
         // deploy clone, log clone address
-        address deployedClone = Clones.clone(rctImplementation);
+        address deployedClone = Clones.clone(RCT_IMPLEMENTATION);
         // RCT token initialization - deploy fully working ERC20 RCT token
         RepresentingConvexToken(deployedClone).initialize("RepresentingConvexToken", "RCT");
 
         deployedClones[curveLpToken] = deployedClone;
-        
+
         // approvals
         ICurveLpToken(curveLpToken).approve(address(BOOSTER), type(uint256).max);
         ICurveLpToken(curveLpToken).approve(ROLLUP_PROCESSOR, type(uint256).max);
@@ -210,7 +214,7 @@ contract ConvexStakingBridge is BridgeBase {
 
         // subsidy
         uint256 criteria = uint256(keccak256(abi.encodePacked(curveLpToken, deployedClone)));
-        uint32 gasUsage = 500000; // deposit 1M, withdrawal 375k -> compromise 500k
+        uint32 gasUsage = 500000;
         uint32 minGasPerMinute = 350;
 
         SUBSIDY.setGasUsageAndMinGasPerMinute(criteria, gasUsage, minGasPerMinute);
@@ -255,7 +259,7 @@ contract RepresentingConvexToken is ERC20Upgradeable, OwnableUpgradeable {
         _mint(_msgSender(), _amount);
     }
 
-    function burn(uint256 amount) public onlyOwner {
-        _burn(_msgSender(), amount);
+    function burn(uint256 _amount) public onlyOwner {
+        _burn(_msgSender(), _amount);
     }
 }
