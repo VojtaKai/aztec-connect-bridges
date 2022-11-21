@@ -17,22 +17,19 @@ Note: Convex Finance has its own governance token CVX which user earns as part o
 
 ## What is the flow of the bridge?
 
-There are two flows of Convex staking bridge, namely deposits and withdrawals. It is necessary to mention that both flows work with pool specific Representing Convex Token (RCT) that is deployed for each pool at its loading.
+There are two flows of Convex staking bridge, namely deposits and withdrawals. It is necessary to mention that both flows work with pool specific Representing Convex Token (RCT) that is deployed for each pool on its loading.
 
 ![Token flow diagram](./ConvexStakingBridge.svg)
 
 ### Deposit (Stake)
 
-TL;DR: Bridge stakes Curve LP tokens into Curve pool liquidity gauge contract via Convex Finance Booster. Subsequently new Convex LP tokens of the corresponding pool are minted in 1:1 ratio and transferred to crvRewards contract. Bridge
-mints RCT tokens which corresponds to the amount of staked Curve LP tokens, minted Convex LP tokens resp. RCT is recoved by Rollup Processor.
+TL;DR: Bridge stakes Curve LP tokens into Curve pool liquidity gauge contract via Convex Finance Booster. Subsequently new Convex LP tokens of the corresponding pool are minted in 1:1 ratio and transferred to crvRewards contract. Bridge mints pool specific RCT token to match the balance of minted Convex LP token. RCT is recoved by Rollup Processor.
 
-Before user starts with deposit, it is necessary to ensure that the pool for the given assets has already been loaded.
+Before user starts with the deposit, it is necessary to ensure that the pool for the given assets has already been loaded.
 
-Bridge expects Curve LP token on input and RCT token on output in order to perform deposit. Curve LP tokens are transferred from Rollup Processor to the bridge. Bridge checks if the provided RCT token has been already deployed and whether it was deployed for the same pool as the provided Curve LP token. If these conditions are not met, trasanction fails. Bridge finds the correct pool that corresponds to the Curve LP token on input. Convex Finance has a Booster contract that operates across all the pools. Booster handles the complete deposit (staking) process and is approved to handle bridge's Curve LP tokens. First, it transfers the Curve LP tokens into Staker contract that then stakes them to Liquidity Gauge of the specific pool. New Convex LP tokens are minted, representing the staked LP tokens on Convex network in 1:1 ratio. Convex LP tokens are transferred to Convex crvRewards contract. CrvRewards is now in possession of the minted Convex LP tokens and through them keeps track of the staked Curve LP tokens for the bridge (or any other staking user). Because Convex LP tokens is minted for the bridge but not owned by the bridge, RCT token is deployed to
-keep the balance of staked Curve LP tokens, but this time the token is owned by the bridge. Bridge mints the same amount of RCT tokens as Curve LP tokens that was staked, Convex LP tokens minted respectivelly. Minted RCT tokens are then recover by the Rollup Processor.
+Bridge expects Curve LP token on input and RCT token on output in order to perform deposit. Curve LP tokens are transferred from Rollup Processor to the bridge. Bridge checks if the provided RCT token has been already deployed and whether it was deployed for the same pool as the provided Curve LP token. If these conditions are met, deposit may proceed. Bridge finds the correct pool that corresponds to the Curve LP token on input. Convex Finance has a Booster contract that operates across all the pools. Booster handles the complete deposit (staking) process and is approved to handle bridge's Curve LP tokens. First, it transfers the Curve LP tokens into Staker contract that then stakes them to Liquidity Gauge of the specific pool. New Convex LP tokens are minted, representing the staked LP tokens on Convex network in 1:1 ratio. Convex LP tokens are transferred to Convex crvRewards contract. CrvRewards is now in possession of the minted Convex LP tokens and through them keeps track of the staked Curve LP tokens for the bridge (or any other staking user). RCT token is minted by the pool and its balance is matched to be equal to the minted Convex LP tokens. Finally, the minted RCT tokens are recover by the Rollup Processor.
 
-RCT is used to keep track of staked Curve LP tokens by our bridge.
-works in a similar fashion for the bridge as Convex LP token for Convex Finance, both keep track of the staked Curve LP tokens, RCT token and Convex LP token do have the same balances.
+RCT exists to enable Rollup Processor to properly perform deposits and withdrawals for different users at different times. Rollup Processor expects to work with at least one input and one output asset and both assets need to be able to be owned by it. Because minted Convex LP tokens are only indirectly owned by the bridge and the actual ownership is given to crvRewards contract, Convex LP token cannot be transferred back to the Rollup Provider. RCT token represents the minted Convex LP tokens, but this time the token is fully owned by the bridge and can be transferred elsewhere.
 
 **Edge cases**:
 
@@ -43,11 +40,11 @@ works in a similar fashion for the bridge as Convex LP token for Convex Finance,
 
 ### Withdrawal (Unstake)
 
-TL;DR: Rollup Processor transfers RCT tokens to the Bridge. Bridge withdraws staked Curve LP tokens and staking rewards via Booster. Booster burns representing Convex LP tokens and returns staked Curve LP tokens to the bridge. RCT tokens are burned and returned Curve LP tokens are recovered by Rollup Processor.
+TL;DR: Rollup Processor transfers RCT tokens to the bridge. Bridge withdraws staked Curve LP tokens and staking rewards via Booster and direct interaction with crvRewards contract. Booster burns Convex LP tokens and returns staked Curve LP tokens to the bridge. RCT tokens are burned and returned Curve LP tokens are recovered by Rollup Processor.
 
 Before user starts with withdrawal, it is necessary to ensure that the pool for the given assets has already been loaded.
 
-Bridge expects RCT token on input and Curve LP token on output to perform withdrawal. Rollup Processor transfers RCT tokens to the bridge. Next, a check is performed if the given pool has already been loaded and the RCT token has already been deployed. Another check assures that the two assets belongs to the same pool. If checks pass, the bridge searches for the right pool and then continues with withdrawal of Curve LP tokens. Withdrawal process consists of two steps. First, the bridge calls crvRewards contract to transfer the Convex LP tokens to the bridge and claim rewards. Second, the bridge calls the Booster to withdraw the deposited Curve LP tokens. It starts by burning the Convex LP tokens, then retrieves Curve LP tokens from Staker contract. If sufficient funds are not available, Staker pulls more deposited Curve LP tokens from the specific Curve pool liquidity gauge contract. Desired amount of Curve LP tokens is then retrieved and transferred back to the bridge. RCT tokens are burned to mirror the balance of staked Curve LP tokens. Finally, Rollup Processor recovers the Curve LP tokens.
+Bridge expects RCT token on input and Curve LP token on output to perform withdrawal. Rollup Processor transfers RCT tokens to the bridge. Then, a check is performed whether the pool for the given assets has already been loaded and the RCT token has already been deployed. Next check assures that the two assets belongs to the same pool. If checks pass, the bridge searches for the right pool and then continues with withdrawal of Curve LP tokens. Withdrawal process consists of two steps. First, the bridge calls crvRewards contract to transfer the Convex LP tokens to the bridge and claim rewards. Second, the bridge calls the Booster to withdraw the deposited Curve LP tokens. It starts by burning the Convex LP tokens, then retrieves Curve LP tokens from Staker contract. If sufficient funds are not available, Staker pulls more deposited Curve LP tokens from the specific Curve pool liquidity gauge contract. Desired amount of Curve LP tokens is then retrieved and transferred back to the bridge. RCT tokens are burned to mirror the balance of Convex LP tokens. Finally, Rollup Processor recovers the Curve LP tokens.
 
 Claimed rewards are the boosted CRV tokens, CVX tokens and for some pools some additional rewards. These rewards are minted for the bridge and are not recovered by the Rollup Processor.
 
@@ -68,10 +65,10 @@ Claimed rewards are the boosted CRV tokens, CVX tokens and for some pools some a
 
 ## Can tokens balances be impacted by external parties, if yes, how?
 
-- Either a single pool or all at the same time can be shut down. This can impact the balances of certain contracts where the tokens typically are, however, do not result in any tokens lost.
+- Either a single pool or all pools at the same time can be shut down. This can impact the balances of certain contracts where the tokens typically are, however, do not result in any tokens lost.
 
 - A single pool can be shut down by Booster's Pool Manager contract (0x5F47010F230cE1568BeA53a06eBAF528D05c5c1B)
-  Any interaction with curve pool supported by Convex Finance can be shut down by Convex pool manager contract.
+  Any interaction with a pool supported by Convex Finance can be shut down by Convex pool manager contract.
   Pool shutdown will force all tokens from Staker and Gauge contracts to be transferred to Booster. Withdrawals will no get impaired.
   Only the Staker's and Gauge's balances (including your share) are displaced.
   Note: Deposit will not be possible.
