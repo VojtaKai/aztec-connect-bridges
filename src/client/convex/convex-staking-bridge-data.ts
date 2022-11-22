@@ -1,7 +1,7 @@
 import { EthAddress } from "@aztec/barretenberg/address";
 import { EthereumProvider } from "@aztec/barretenberg/blockchain";
 import { Web3Provider } from "@ethersproject/providers";
-import { createWeb3Provider } from "../aztec/provider";
+import { createWeb3Provider } from "../aztec/provider/web3_provider.js";
 
 import "isomorphic-fetch";
 
@@ -16,7 +16,7 @@ import {
   ICurveLpToken__factory,
   ICurveRewards,
   ICurveRewards__factory,
-} from "../../../typechain-types";
+} from "../../../typechain-types/index.js";
 import {
   AuxDataConfig,
   AztecAsset,
@@ -24,7 +24,7 @@ import {
   BridgeDataFieldGetters,
   SolidityType,
   UnderlyingAsset,
-} from "../bridge-data";
+} from "../bridge-data.js";
 import { BigNumber } from "ethers";
 
 export interface IPoolInfo {
@@ -106,7 +106,7 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
       await this.booster.deposit(selectedPool.poolId, inputValue, true);
       const balanceAfter = (await curveRewards.balanceOf(this.bridgeAddress)).toBigInt();
 
-      return [balanceAfter - balanceBefore];
+      return [ balanceAfter - balanceBefore];
     } else if (this.deployedClones.get(outputAssetA.erc20Address.toString()) === inputAssetA.erc20Address.toString()) {
       selectedPool = this.pools.get(outputAssetA.erc20Address.toString());
 

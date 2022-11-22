@@ -9,9 +9,9 @@ import {
   ICurveLpToken__factory,
   ICurveRewards,
   ICurveRewards__factory,
-} from "../../../typechain-types";
-import { AztecAssetType } from "../bridge-data";
-import { ConvexBridgeData } from "./convex-staking-bridge-data";
+} from "../../../typechain-types/index.js";
+import { AztecAssetType } from "../bridge-data.js";
+import { ConvexBridgeData } from "./convex-staking-bridge-data.js";
 
 jest.mock("../aztec/provider", () => ({
   createWeb3Provider: jest.fn(),
