@@ -106,7 +106,7 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
       await this.booster.deposit(selectedPool.poolId, inputValue, true);
       const balanceAfter = (await curveRewards.balanceOf(this.bridgeAddress)).toBigInt();
 
-      return [ balanceAfter - balanceBefore];
+      return [balanceAfter - balanceBefore];
     } else if (this.deployedClones.get(outputAssetA.erc20Address.toString()) === inputAssetA.erc20Address.toString()) {
       selectedPool = this.pools.get(outputAssetA.erc20Address.toString());
 

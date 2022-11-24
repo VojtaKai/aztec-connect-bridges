@@ -18,14 +18,14 @@ import {ICurveRewards} from "../../interfaces/convex/ICurveRewards.sol";
 import {IRepConvexToken} from "../../interfaces/convex/IRepConvexToken.sol";
 
 /**
- @notice A DefiBridge that allows user to stake Curve LP tokens through Convex Finance and earn boosted CRV 
- without locking them in for an extended period of time. Plus earning CVX and possibly other rewards. 
- @notice Staked tokens can be withdrawn (unstaked) any time.
- @dev Convex Finance mints pool specific Convex LP token, however, not for the staking user (the bridge) directly.
- RCT ERC20 token is deployed for each loaded pool and mirrors balance of minted Convex LP tokens for the bridge.
- The difference is that RCT is owned directly by the bridge whereas Convex LP tokens are not and cannot be transferred to the Rollup Processor.
- @dev Synchronous and stateless bridge
- @author Vojtech Kaiser
+ * @notice A DefiBridge that allows user to stake Curve LP tokens through Convex Finance and earn boosted CRV 
+ *  without locking them in for an extended period of time. Plus earning CVX and possibly other rewards. 
+ *  @notice Staked tokens can be withdrawn (unstaked) any time.
+ *  @dev Convex Finance mints pool specific Convex LP token, however, not for the staking user (the bridge) directly.
+ *  RCT ERC20 token is deployed for each loaded pool and mirrors balance of minted Convex LP tokens for the bridge.
+ *  The difference is that RCT is owned directly by the bridge whereas Convex LP tokens are not and cannot be transferred to the Rollup Processor.
+ *  @dev Synchronous and stateless bridge
+ *  @author Vojtech Kaiser
  */
 contract ConvexStakingBridge is BridgeBase {
     using SafeERC20 for IConvexBooster;
@@ -60,21 +60,21 @@ contract ConvexStakingBridge is BridgeBase {
     }
 
     /**
-    @notice Function so the bridge can receive ether. Used for subsidy.
-    */
+     * @notice Function so the bridge can receive ether. Used for subsidy.
+     */
     receive() external payable {}
 
     /**
-    @notice Stake and unstake Curve LP tokens through Convex Finance Booster anytime.
-    @notice Convert rate between Curve LP token and corresponding Convex LP token is 1:1.
-    @notice Stake == Deposit, Unstake == Withdraw
-    @notice RCT (Representing Convex Token) is a representation of Convex LP token minted for bridge but fully owned by the bridge
-    @param _inputAssetA Curve LP token (staking), RCT (unstaking)
-    @param _outputAssetA RCT (staking), Curve LP token (unstaking)
-    @param _totalInputValue Total number of Curve LP tokens to deposit / withdraw
-    @param outputValueA Number of Curve LP tokens staked / unstaked, Number of RCT minted / burned
-    @param _rollupBeneficiary Address of the contract that receives subsidy
-    */
+     * @notice Stake and unstake Curve LP tokens through Convex Finance Booster anytime.
+     * @notice Convert rate between Curve LP token and corresponding Convex LP token is 1:1.
+     * @notice Stake == Deposit, Unstake == Withdraw
+     * @notice RCT (Representing Convex Token) is a representation of Convex LP token minted for bridge but fully owned by the bridge
+     * @param _inputAssetA Curve LP token (staking), RCT (unstaking)
+     * @param _outputAssetA RCT (staking), Curve LP token (unstaking)
+     * @param _totalInputValue Total number of Curve LP tokens to deposit / withdraw
+     * @param outputValueA Number of Curve LP tokens staked / unstaked, Number of RCT minted / burned
+     * @param _rollupBeneficiary Address of the contract that receives subsidy
+     */
     function convert(
         AztecTypes.AztecAsset calldata _inputAssetA,
         AztecTypes.AztecAsset calldata _inputAssetB,
@@ -84,20 +84,10 @@ contract ConvexStakingBridge is BridgeBase {
         uint256,
         uint64,
         address _rollupBeneficiary
-    )
-        external
-        payable
-        override(BridgeBase)
-        onlyRollup
-        returns (
-            uint256 outputValueA,
-            uint256,
-            bool
-        )
-    {
+    ) external payable override (BridgeBase) onlyRollup returns (uint256 outputValueA, uint256, bool) {
         if (
-            _inputAssetA.assetType != AztecTypes.AztecAssetType.ERC20 ||
-            _outputAssetA.assetType != AztecTypes.AztecAssetType.ERC20
+            _inputAssetA.assetType != AztecTypes.AztecAssetType.ERC20
+                || _outputAssetA.assetType != AztecTypes.AztecAssetType.ERC20
         ) {
             revert InvalidAssetType();
         }
@@ -129,8 +119,8 @@ contract ConvexStakingBridge is BridgeBase {
     }
 
     /**
-    @notice Internal function to pay out subsidy to the rollupBeneficiary
-    */
+     * @notice Internal function to pay out subsidy to the rollupBeneficiary
+     */
     function _claimSubsidy(
         ISubsidy _subsidy,
         AztecTypes.AztecAsset calldata _inputAssetA,
@@ -140,15 +130,14 @@ contract ConvexStakingBridge is BridgeBase {
         address _rollupBeneficiary
     ) internal {
         _subsidy.claimSubsidy(
-            computeCriteria(_inputAssetA, _inputAssetB, _outputAssetA, _outputAssetB, 0),
-            _rollupBeneficiary
+            computeCriteria(_inputAssetA, _inputAssetB, _outputAssetA, _outputAssetB, 0), _rollupBeneficiary
         );
     }
 
-    /** 
-    @notice Internal function to deposit Curve LP tokens.
-    @notice RCT is minted for the bridge. Mirrors balance of minted Convex token for the bridge.
-    */
+    /**
+     * @notice Internal function to deposit Curve LP tokens.
+     * @notice RCT is minted for the bridge. Mirrors balance of minted Convex token for the bridge.
+     */
     function _deposit(
         AztecTypes.AztecAsset memory _outputAssetA,
         uint256 _totalInputValue,
@@ -165,10 +154,10 @@ contract ConvexStakingBridge is BridgeBase {
         IRepConvexToken(_outputAssetA.erc20Address).mint(_totalInputValue);
     }
 
-    /** 
-    @notice Internal function to withdraw Curve LP tokens.
-    @notice RCT is burned for the bridge. Mirrors balance of minted Convex token for the bridge.
-    */
+    /**
+     * @notice Internal function to withdraw Curve LP tokens.
+     * @notice RCT is burned for the bridge. Mirrors balance of minted Convex token for the bridge.
+     */
     function _withdraw(
         AztecTypes.AztecAsset memory _inputAssetA,
         AztecTypes.AztecAsset memory _outputAssetA,
@@ -201,7 +190,7 @@ contract ConvexStakingBridge is BridgeBase {
         AztecTypes.AztecAsset calldata _outputAssetA,
         AztecTypes.AztecAsset calldata,
         uint64
-    ) public view override(BridgeBase) returns (uint256) {
+    ) public view override (BridgeBase) returns (uint256) {
         if (deployedClones[_inputAssetA.erc20Address] == _outputAssetA.erc20Address) {
             return uint256(keccak256(abi.encodePacked(_inputAssetA.erc20Address, _outputAssetA.erc20Address)));
         } else {
@@ -210,13 +199,13 @@ contract ConvexStakingBridge is BridgeBase {
     }
 
     /**
-    @notice Loads pool information for a specific pool supported by Convex Finance.
-    @notice Deployment of RCT token for the specific pool is part of the loading.
-    @notice Set allowance for Booster and Rollup Processor to manipulate bridge's Curve LP tokens and RCT (through RCT Clone).
-    @notice Setup bridge subsidy.
-    */
+     * @notice Loads pool information for a specific pool supported by Convex Finance.
+     * @notice Deployment of RCT token for the specific pool is part of the loading.
+     * @notice Set allowance for Booster and Rollup Processor to manipulate bridge's Curve LP tokens and RCT (through RCT Clone).
+     * @notice Setup bridge subsidy.
+     */
     function loadPool(uint256 _poolId) external {
-        (address curveLpToken, address convexToken, , address curveRewards, , ) = BOOSTER.poolInfo(_poolId);
+        (address curveLpToken, address convexToken,, address curveRewards,,) = BOOSTER.poolInfo(_poolId);
         pools[curveLpToken] = PoolInfo(uint96(_poolId), convexToken, curveRewards);
 
         // deploy clone, log clone address
@@ -241,13 +230,13 @@ contract ConvexStakingBridge is BridgeBase {
 }
 
 /**
- @notice ERC20 token that represents pool specific Convex LP token. RCT is deployed for a specific pool that has been loaded.
- @notice RCT mirrors balance of Convex LP tokens. Balances of RCT and Convex LP token are before deposit and after withdrawal identical.
- @notice RCT can only be minted for the owner (the bridge) by the owner and is fully owned by the bridge.
- @notice RCT is an ERC20 upgradable token which allows initialization after the time it was deployed.
- @dev RCT implementation is deployed on bridge deployment.
- @dev RCT is a proxied contract and is called via a clone that is created for each loaded pool. 
- @dev Clone is tied to the RCT implementation by calling the `initialize` function.
+ * @notice ERC20 token that represents pool specific Convex LP token. RCT is deployed for a specific pool that has been loaded.
+ *  @notice RCT mirrors balance of Convex LP tokens. Balances of RCT and Convex LP token are before deposit and after withdrawal identical.
+ *  @notice RCT can only be minted for the owner (the bridge) by the owner and is fully owned by the bridge.
+ *  @notice RCT is an ERC20 upgradable token which allows initialization after the time it was deployed.
+ *  @dev RCT implementation is deployed on bridge deployment.
+ *  @dev RCT is a proxied contract and is called via a clone that is created for each loaded pool. 
+ *  @dev Clone is tied to the RCT implementation by calling the `initialize` function.
  */
 contract RepresentingConvexToken is ERC20Upgradeable, OwnableUpgradeable {
     function initialize(string memory _tokenName, string memory _tokenSymbol) public initializer {

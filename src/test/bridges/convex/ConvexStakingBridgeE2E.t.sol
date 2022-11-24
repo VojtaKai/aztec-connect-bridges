@@ -51,10 +51,10 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
     }
 
     /**
-    @notice Tests staking and withdrawing by constructing bridgeCallData and passing it directly
-    to RollupProcessor function that initializes the interaction with the bridge.
-    @notice Compound test for all available pools. 5 pools are randomly selected and tested.
-    */
+     * @notice Tests staking and withdrawing by constructing bridgeCallData and passing it directly
+     * to RollupProcessor function that initializes the interaction with the bridge.
+     * @notice Compound test for all available pools. 5 pools are randomly selected and tested.
+     */
     function testStakeWithdrawFlow(
         uint64 _depositAmount,
         uint16 _poolId1,
@@ -111,13 +111,7 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
         uint256 _depositAmount
     ) internal {
         ROLLUP_ENCODER.defiInteractionL2(
-            _bridgeId,
-            _curveLpAsset,
-            emptyAsset,
-            _representingConvexAsset,
-            emptyAsset,
-            0,
-            _depositAmount
+            _bridgeId, _curveLpAsset, emptyAsset, _representingConvexAsset, emptyAsset, 0, _depositAmount
         );
 
         // move time forward to have claimable amount on beneficiary
@@ -139,13 +133,7 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
     ) internal {
         // Compute withdrawal calldata
         ROLLUP_ENCODER.defiInteractionL2(
-            _bridgeId,
-            _representingConvexAsset,
-            emptyAsset,
-            _curveLpAsset,
-            emptyAsset,
-            0,
-            _depositAmount
+            _bridgeId, _representingConvexAsset, emptyAsset, _curveLpAsset, emptyAsset, 0, _depositAmount
         );
 
         skip(1 days); // move time forward to have claimable amount on beneficiary
@@ -190,7 +178,7 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
 
     function _setupBridge(uint256 _poolId) internal {
         bridge = new ConvexStakingBridge(address(ROLLUP_PROCESSOR));
-        (curveLpToken, convexLpToken, gauge, crvRewards, stash, ) = IConvexBooster(BOOSTER).poolInfo(_poolId);
+        (curveLpToken, convexLpToken, gauge, crvRewards, stash,) = IConvexBooster(BOOSTER).poolInfo(_poolId);
 
         // labels
         vm.label(address(bridge), "Bridge");
@@ -253,7 +241,7 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
         }
 
         // Pool is shut down
-        (, , , , , bool poolClosed) = IConvexBooster(BOOSTER).poolInfo(_poolId);
+        (,,,,, bool poolClosed) = IConvexBooster(BOOSTER).poolInfo(_poolId);
         skipPool = poolClosed;
     }
 }

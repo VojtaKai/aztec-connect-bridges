@@ -167,7 +167,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         _deposit(withdrawalAmount);
 
         // withdraw using incorrect pool - RCT Asset address won't match deployed Clone address of the provided Curve LP token
-        (incorrectCurveLpToken, , , , , ) = IConvexBooster(BOOSTER).poolInfo(anotherPoolId);
+        (incorrectCurveLpToken,,,,,) = IConvexBooster(BOOSTER).poolInfo(anotherPoolId);
         vm.label(incorrectCurveLpToken, "Incorrect Curve LP Token Contract");
 
         vm.expectRevert(ErrorLib.InvalidOutputA.selector);
@@ -346,7 +346,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         }
 
         // Pool is shut down
-        (, , , , , bool poolClosed) = IConvexBooster(BOOSTER).poolInfo(_poolId);
+        (,,,,, bool poolClosed) = IConvexBooster(BOOSTER).poolInfo(_poolId);
         skipPool = poolClosed;
     }
 
@@ -399,11 +399,11 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
     }
 
     /**
-    @notice Mocking of Curve LP token balance.
-    @notice Depositing Curve LP tokens.
-    @notice Transfering minted representing Convex tokens to RollupProcessor
-    @param _depositAmount Number of Curve LP tokens to stake.
-    */
+     * @notice Mocking of Curve LP token balance.
+     * @notice Depositing Curve LP tokens.
+     * @notice Transfering minted representing Convex tokens to RollupProcessor
+     * @param _depositAmount Number of Curve LP tokens to stake.
+     */
     function _deposit(uint256 _depositAmount) internal {
         // Mock initial balance of CURVE LP Token for Rollup Processor
         deal(curveLpToken, rollupProcessor, _depositAmount);
@@ -448,7 +448,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
     function _setupBridge(uint256 _poolId) internal {
         bridge = new ConvexStakingBridge(rollupProcessor);
-        (curveLpToken, convexLpToken, gauge, crvRewards, stash, ) = IConvexBooster(BOOSTER).poolInfo(_poolId);
+        (curveLpToken, convexLpToken, gauge, crvRewards, stash,) = IConvexBooster(BOOSTER).poolInfo(_poolId);
 
         // labels
         vm.label(address(bridge), "Bridge");

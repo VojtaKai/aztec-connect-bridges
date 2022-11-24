@@ -43,8 +43,8 @@ contract ConvexStakingBridgeDeployment is BaseDeployment {
     }
 
     /**
-    @notice List RCT tokens by specifying pool ids
-    */
+     * @notice List RCT tokens by specifying pool ids
+     */
     function listTokensByPoolId() public {
         // Warning: Pools have to be already loaded for the listing to be successful
         address bridgeAddr = 0x0000000000000000000000000000000000000000; // Adjust bridge address
@@ -55,8 +55,8 @@ contract ConvexStakingBridgeDeployment is BaseDeployment {
     }
 
     /**
-    @notice List RCT tokens by specifying Curve LP tokens
-    */
+     * @notice List RCT tokens by specifying Curve LP tokens
+     */
     function listTokensByCurveLpToken() public {
         // Warning: Pools have to be already loaded for the listing to be successful
         // Note: Insert Curve LP token address in the curveLpTokens variable at the top of the contract to have the corresponding RCT tokens listed
@@ -71,13 +71,13 @@ contract ConvexStakingBridgeDeployment is BaseDeployment {
     function _listAllAssets() internal {
         uint256 poolLength = BOOSTER.poolLength();
         for (uint256 pid = 0; pid < poolLength; pid++) {
-            (address curveLpToken, , , , , ) = BOOSTER.poolInfo(pid);
+            (address curveLpToken,,,,,) = BOOSTER.poolInfo(pid);
             listAsset(curveLpToken, 100000);
         }
     }
 
     function _listToken(address _bridgeAddr, uint256 _poolId) internal {
-        (address curveLpToken, , , , , ) = BOOSTER.poolInfo(_poolId);
+        (address curveLpToken,,,,,) = BOOSTER.poolInfo(_poolId);
         address rctToken = IConvexStakingBridge(_bridgeAddr).deployedClones(curveLpToken);
         listAsset(rctToken, 100000);
     }
@@ -86,7 +86,7 @@ contract ConvexStakingBridgeDeployment is BaseDeployment {
         uint256 poolLength = BOOSTER.poolLength();
 
         for (uint256 pid = 0; pid < poolLength; pid++) {
-            (address curveLpToken, , , , , ) = BOOSTER.poolInfo(pid);
+            (address curveLpToken,,,,,) = BOOSTER.poolInfo(pid);
             if (_curveLpToken == curveLpToken) {
                 poolId = pid;
                 return poolId;
