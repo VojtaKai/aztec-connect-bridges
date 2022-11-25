@@ -53,7 +53,7 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
     /**
      * @notice Tests staking and withdrawing by constructing bridgeCallData and passing it directly
      * to RollupProcessor function that initializes the interaction with the bridge.
-     * @notice Compound test for all available pools. 5 pools are randomly selected and tested.
+     * @dev Compound test for 5 randomly selected pools from all available pools.
      */
     function testStakeWithdrawFlow(
         uint64 _depositAmount,
@@ -83,7 +83,7 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
             vm.startPrank(MULTI_SIG);
             // Add the new bridge and set its initial gasLimit
             ROLLUP_PROCESSOR.setSupportedBridge(address(bridge), 2500000);
-            // Add Assets and set their initial gasLimits
+            // Add assets and set their initial gasLimits
             ROLLUP_PROCESSOR.setSupportedAsset(curveLpToken, 100000);
             ROLLUP_PROCESSOR.setSupportedAsset(rctClone, 100000);
             vm.stopPrank();
@@ -95,7 +95,7 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
             AztecTypes.AztecAsset memory curveLpAsset = ROLLUP_ENCODER.getRealAztecAsset(curveLpToken);
             AztecTypes.AztecAsset memory representingConvexAsset = ROLLUP_ENCODER.getRealAztecAsset(rctClone);
 
-            // // Mint depositAmount of CURVE LP tokens for RollUp Processor
+            // // Mint depositAmount of Curve LP tokens for RollUp Processor
             deal(curveLpToken, address(ROLLUP_PROCESSOR), _depositAmount);
 
             _deposit(bridgeId, curveLpAsset, representingConvexAsset, _depositAmount);
@@ -153,12 +153,14 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
     }
 
     function _setupSubsidy() internal {
-        // Set ETH balance of bridge and BENEFICIARY to 0 for clarity (somebody sent ETH to that address on mainnet)
+        // Set ETH balance of bridge and BENEFICIARY to 0
         vm.deal(address(bridge), 0);
         vm.deal(BENEFICIARY, 0);
 
+        uint256[] memory criterias = new uint256[](2);
+
         // different criteria for deposit and withdrawal
-        uint256 criteria = bridge.computeCriteria(
+        criterias[0] = bridge.computeCriteria(
             AztecTypes.AztecAsset(1, curveLpToken, AztecTypes.AztecAssetType.ERC20),
             emptyAsset,
             AztecTypes.AztecAsset(100, rctClone, AztecTypes.AztecAssetType.ERC20),
@@ -166,9 +168,18 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
             0
         );
 
+        criterias[1] = bridge.computeCriteria(
+            AztecTypes.AztecAsset(100, rctClone, AztecTypes.AztecAssetType.ERC20),
+            emptyAsset,
+            AztecTypes.AztecAsset(1, curveLpToken, AztecTypes.AztecAssetType.ERC20),
+            emptyAsset,
+            0
+        );
+
         uint32 minGasPerMinute = 350;
 
-        SUBSIDY.subsidize{value: 1 ether}(address(bridge), criteria, minGasPerMinute);
+        SUBSIDY.subsidize{value: 1 ether}(address(bridge), criterias[0], minGasPerMinute);
+        SUBSIDY.subsidize{value: 1 ether}(address(bridge), criterias[1], minGasPerMinute);
 
         SUBSIDY.registerBeneficiary(BENEFICIARY);
 
@@ -183,7 +194,7 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
         // labels
         vm.label(address(bridge), "Bridge");
         vm.label(curveLpToken, "Curve LP Token Contract");
-        vm.label(convexLpToken, "Convex Token Contract");
+        vm.label(convexLpToken, "Convex LP Token Contract");
         vm.label(crvRewards, "CrvRewards Contract");
         vm.label(stash, "Stash Contract");
         vm.label(gauge, "Gauge Contract");

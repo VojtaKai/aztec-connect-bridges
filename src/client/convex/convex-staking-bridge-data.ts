@@ -29,7 +29,7 @@ import { BigNumber } from "ethers";
 
 export interface IPoolInfo {
   poolId: number;
-  convexToken: string;
+  convexLpToken: string;
   curveRewards: string;
 }
 
@@ -239,7 +239,7 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
     const poolInfo = await this.booster.poolInfo(BigNumber.from(poolId));
     this.pools.set(poolInfo[0], {
       poolId: poolId,
-      convexToken: poolInfo[1],
+      convexLpToken: poolInfo[1],
       curveRewards: poolInfo[3],
     });
     this.deployedClones.set(poolInfo[0], `0x100100100100100100100100100100100100100${poolId}`);

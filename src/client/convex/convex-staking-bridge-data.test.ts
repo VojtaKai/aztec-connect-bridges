@@ -48,11 +48,11 @@ describe("convex staking bridge data", () => {
 
   // Addresses for mocks
   const curveLpToken0 = "0x0000000000000000000000000000000000000001";
-  const convexToken0 = "0x0000000000000000000000000000000000000002";
+  const convexLpToken0 = "0x0000000000000000000000000000000000000002";
   const crvRewards0 = "0x0000000000000000000000000000000000000003";
 
   const curveLpToken1 = "0x0000000000000000000000000000000000000010";
-  const convexToken1 = "0x0000000000000000000000000000000000000011";
+  const convexLpToken1 = "0x0000000000000000000000000000000000000011";
   const crvRewards1 = "0x0000000000000000000000000000000000000012";
 
   // Other addresses
@@ -69,8 +69,8 @@ describe("convex staking bridge data", () => {
       ...boosterMocked,
       poolInfo: jest
         .fn()
-        .mockResolvedValueOnce([curveLpToken0, convexToken0, "", crvRewards0, "", ""])
-        .mockResolvedValueOnce([curveLpToken1, convexToken1, "", crvRewards1, "", ""]),
+        .mockResolvedValueOnce([curveLpToken0, convexLpToken0, "", crvRewards0, "", ""])
+        .mockResolvedValueOnce([curveLpToken1, convexLpToken1, "", crvRewards1, "", ""]),
       deposit: jest.fn().mockResolvedValue(true),
     };
 
@@ -115,8 +115,8 @@ describe("convex staking bridge data", () => {
       ...boosterMocked,
       poolInfo: jest
         .fn()
-        .mockResolvedValueOnce([curveLpToken0, convexToken0, "", crvRewards0, "", ""])
-        .mockResolvedValueOnce([curveLpToken1, convexToken1, "", crvRewards1, "", ""]),
+        .mockResolvedValueOnce([curveLpToken0, convexLpToken0, "", crvRewards0, "", ""])
+        .mockResolvedValueOnce([curveLpToken1, convexLpToken1, "", crvRewards1, "", ""]),
       withdraw: jest.fn().mockResolvedValue(true),
     };
 
@@ -165,8 +165,8 @@ describe("convex staking bridge data", () => {
       ...boosterMocked,
       poolInfo: jest
         .fn()
-        .mockResolvedValueOnce([curveLpToken0, convexToken0, "", crvRewards0, "", ""])
-        .mockResolvedValueOnce([curveLpToken1, convexToken1, "", crvRewards1, "", ""]),
+        .mockResolvedValueOnce([curveLpToken0, convexLpToken0, "", crvRewards0, "", ""])
+        .mockResolvedValueOnce([curveLpToken1, convexLpToken1, "", crvRewards1, "", ""]),
     };
 
     curveRewardsMocked = {
@@ -198,8 +198,8 @@ describe("convex staking bridge data", () => {
       ...boosterMocked,
       poolInfo: jest
         .fn()
-        .mockResolvedValueOnce([curveLpToken0, convexToken0, "", crvRewards0, "", ""])
-        .mockResolvedValueOnce([curveLpToken1, convexToken1, "", crvRewards1, "", ""]),
+        .mockResolvedValueOnce([curveLpToken0, convexLpToken0, "", crvRewards0, "", ""])
+        .mockResolvedValueOnce([curveLpToken1, convexLpToken1, "", crvRewards1, "", ""]),
     };
 
     curveRewardsMocked = {
@@ -248,8 +248,8 @@ describe("convex staking bridge data", () => {
       ...boosterMocked,
       poolInfo: jest
         .fn()
-        .mockResolvedValueOnce([curveLpToken0, convexToken0, "", crvRewards0, "", ""])
-        .mockResolvedValueOnce([curveLpToken1, convexToken1, "", crvRewards1, "", ""]),
+        .mockResolvedValueOnce([curveLpToken0, convexLpToken0, "", crvRewards0, "", ""])
+        .mockResolvedValueOnce([curveLpToken1, convexLpToken1, "", crvRewards1, "", ""]),
       withdraw: jest.fn().mockResolvedValue(true),
     };
 
