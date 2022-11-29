@@ -7,13 +7,12 @@ import "isomorphic-fetch";
 
 import { AssetValue } from "@aztec/barretenberg/asset";
 import {
+  IERC20Metadata,
   IERC20Metadata__factory,
   IRollupProcessor,
   IRollupProcessor__factory,
   IConvexBooster__factory,
   IConvexBooster,
-  ICurveLpToken,
-  ICurveLpToken__factory,
   ICurveRewards,
   ICurveRewards__factory,
 } from "../../../typechain-types/index.js";
@@ -90,7 +89,7 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
 
     let selectedPool: IPoolInfo | undefined;
     let curveRewards: ICurveRewards;
-    let curveLpToken: ICurveLpToken;
+    let curveLpToken: IERC20Metadata;
 
     // deposit
     if (this.deployedClones.get(inputAssetA.erc20Address.toString()) === outputAssetA.erc20Address.toString()) {
@@ -115,7 +114,7 @@ export class ConvexBridgeData implements BridgeDataFieldGetters {
       }
 
       curveRewards = ICurveRewards__factory.connect(selectedPool.curveRewards, this.ethersProvider);
-      curveLpToken = ICurveLpToken__factory.connect(outputAssetA.erc20Address.toString(), this.ethersProvider);
+      curveLpToken = IERC20Metadata__factory.connect(outputAssetA.erc20Address.toString(), this.ethersProvider);
 
       const balanceBefore = (await curveLpToken.balanceOf(this.bridgeAddress)).toBigInt();
 

@@ -11,23 +11,23 @@ import {ErrorLib} from "../../../bridges/base/ErrorLib.sol";
 import {IConvexBooster} from "../../../interfaces/convex/IConvexBooster.sol";
 
 contract ConvexStakingBridgeTest is BridgeTestBase {
+    address private constant BOOSTER = 0xF403C135812408BFbE8713b5A23a04b3D48AAE31;
+    address private constant CRV_TOKEN = 0xD533a949740bb3306d119CC777fa900bA034cd52;
+    address private constant CVX_TOKEN = 0x4e3FBD56CD56c3e72c1403e103b45Db9da5B9D2B;
+    address private constant BENEFICIARY = address(777);
+
     address private curveLpToken;
     address private convexLpToken;
     address private rctImplementation;
     address private rctClone;
-    address private constant BOOSTER = 0xF403C135812408BFbE8713b5A23a04b3D48AAE31;
     address private staker;
     address private gauge;
     address private stash;
     address private crvRewards;
     address private minter;
-    address private constant CRV_TOKEN = 0xD533a949740bb3306d119CC777fa900bA034cd52;
-    address private constant CVX_TOKEN = 0x4e3FBD56CD56c3e72c1403e103b45Db9da5B9D2B;
-    address private constant BENEFICIARY = address(777);
-
     address private rollupProcessor;
-
     ConvexStakingBridge private bridge;
+
 
     uint256[] public invalidPids = [48]; // define invalid pids
     mapping(uint256 => bool) public invalidPoolIds;

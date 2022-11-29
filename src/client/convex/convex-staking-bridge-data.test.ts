@@ -5,8 +5,6 @@ import {
   IERC20Metadata__factory,
   IConvexBooster__factory,
   IConvexBooster,
-  ICurveLpToken,
-  ICurveLpToken__factory,
   ICurveRewards,
   ICurveRewards__factory,
 } from "../../../typechain-types/index.js";
@@ -23,9 +21,8 @@ type Mockify<T> = {
 
 describe("convex staking bridge data", () => {
   let boosterMocked: Mockify<IConvexBooster>;
-  let curveLpTokenMocked: Mockify<ICurveLpToken>;
   let curveRewardsMocked: Mockify<ICurveRewards>;
-  let ERC20Metadata: Mockify<IERC20Metadata>;
+  let IERC20MetadataMocked: Mockify<IERC20Metadata>;
 
   // Tokens
   const curveLpToken = {
@@ -125,8 +122,8 @@ describe("convex staking bridge data", () => {
       withdraw: jest.fn(),
     };
 
-    curveLpTokenMocked = {
-      ...curveLpTokenMocked,
+    IERC20MetadataMocked = {
+      ...IERC20MetadataMocked,
       balanceOf: jest
         .fn()
         .mockResolvedValueOnce(BigNumber.from(balanceBefore))
@@ -135,7 +132,7 @@ describe("convex staking bridge data", () => {
 
     IConvexBooster__factory.connect = () => boosterMocked as IConvexBooster;
     ICurveRewards__factory.connect = () => curveRewardsMocked as ICurveRewards;
-    ICurveLpToken__factory.connect = () => curveLpTokenMocked as ICurveLpToken;
+    IERC20Metadata__factory.connect = () => IERC20MetadataMocked as IERC20Metadata;
 
     // Bridge
     const convexStakingBridge = ConvexBridgeData.create(
@@ -258,25 +255,20 @@ describe("convex staking bridge data", () => {
       withdraw: jest.fn(),
     };
 
-    curveLpTokenMocked = {
-      ...curveLpTokenMocked,
+    IERC20MetadataMocked = {
+      ...IERC20MetadataMocked,
+      name: jest.fn().mockResolvedValueOnce(underlyingAssetName),
+      symbol: jest.fn().mockResolvedValueOnce(underlyingAssetSymbol),
+      decimals: jest.fn().mockResolvedValueOnce(underlyingAssetDecimals),
       balanceOf: jest
         .fn()
         .mockResolvedValueOnce(BigNumber.from(balanceBefore))
         .mockResolvedValueOnce(BigNumber.from(withdrawValue)),
     };
 
-    ERC20Metadata = {
-      ...ERC20Metadata,
-      name: jest.fn().mockResolvedValueOnce(underlyingAssetName),
-      symbol: jest.fn().mockResolvedValueOnce(underlyingAssetSymbol),
-      decimals: jest.fn().mockResolvedValueOnce(underlyingAssetDecimals),
-    };
-
     IConvexBooster__factory.connect = () => boosterMocked as IConvexBooster;
     ICurveRewards__factory.connect = () => curveRewardsMocked as ICurveRewards;
-    ICurveLpToken__factory.connect = () => curveLpTokenMocked as ICurveLpToken;
-    IERC20Metadata__factory.connect = () => ERC20Metadata as IERC20Metadata;
+    IERC20Metadata__factory.connect = () => IERC20MetadataMocked as IERC20Metadata;
 
     // Bridge
     const convexStakingBridge = ConvexBridgeData.create(

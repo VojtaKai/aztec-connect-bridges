@@ -2,6 +2,7 @@
 // Copyright 2022 Aztec.
 pragma solidity >=0.8.4;
 
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 
@@ -11,7 +12,7 @@ import {AztecTypes} from "rollup-encoder/libraries/AztecTypes.sol";
 import {ICurvePool} from "../../interfaces/curve/ICurvePool.sol";
 import {ErrorLib} from "../base/ErrorLib.sol";
 import {IConvexBooster} from "../../interfaces/convex/IConvexBooster.sol";
-import {ICurveLpToken} from "../../interfaces/convex/ICurveLpToken.sol";
+// import {ICurveLpToken} from "../../interfaces/convex/ICurveLpToken.sol";
 import {ICurveRewards} from "../../interfaces/convex/ICurveRewards.sol";
 import {IRepConvexToken} from "../../interfaces/convex/IRepConvexToken.sol";
 import {RepresentingConvexToken} from "./RepresentingConvexToken.sol";
@@ -23,7 +24,7 @@ import {RepresentingConvexToken} from "./RepresentingConvexToken.sol";
  */
 contract ConvexStakingBridge is BridgeBase {
     using SafeERC20 for IConvexBooster;
-    using SafeERC20 for ICurveLpToken;
+    using SafeERC20 for IERC20;
 
     /**
      * @param poolId Id of the staking pool
@@ -67,13 +68,13 @@ contract ConvexStakingBridge is BridgeBase {
     /**
      * @notice Stakes Curve LP tokens and earns rewards on them. Gets back RCT token.
      * @dev Convert rate between Curve LP token and corresponding Convex LP token is 1:1.
-     * @dev Stake == Deposit, Unstake == Withdraw
-     * @dev RCT (Representing Convex Token) is a representation of Convex LP token minted for bridge but fully owned by the bridge
+     Stake == Deposit, Unstake == Withdraw
+     RCT (Representing Convex Token) is a representation of Convex LP token minted for bridge but fully owned by the bridge
      * @param _inputAssetA Curve LP token (staking), RCT (unstaking)
      * @param _outputAssetA RCT (staking), Curve LP token (unstaking)
      * @param _totalInputValue Total number of Curve LP tokens to deposit / withdraw
-     * @param outputValueA Number of Curve LP tokens staked / unstaked, Number of RCT minted / burned
      * @param _rollupBeneficiary Address of the beneficiary that receives subsidy
+     * @return outputValueA Number of Curve LP tokens staked / unstaked, Number of RCT minted / burned
      */
     function convert(
         AztecTypes.AztecAsset calldata _inputAssetA,
@@ -130,8 +131,8 @@ contract ConvexStakingBridge is BridgeBase {
         deployedClones[curveLpToken] = deployedClone;
 
         // approvals
-        ICurveLpToken(curveLpToken).approve(address(BOOSTER), type(uint256).max);
-        ICurveLpToken(curveLpToken).approve(ROLLUP_PROCESSOR, type(uint256).max);
+        IERC20(curveLpToken).approve(address(BOOSTER), type(uint256).max);
+        IERC20(curveLpToken).approve(ROLLUP_PROCESSOR, type(uint256).max);
         IRepConvexToken(deployedClone).approve(ROLLUP_PROCESSOR, type(uint256).max);
 
         // subsidy
@@ -171,6 +172,7 @@ contract ConvexStakingBridge is BridgeBase {
      * @param _outputAssetA Asset for the RCT token
      * @param _totalInputValue Number of Curve LP tokens to stake
      * @param _selectedPool Pool info about the staking pool
+     * @return outputValueA Number of successfully staked Curve LP tokens
      */
     function _deposit(
         AztecTypes.AztecAsset memory _outputAssetA,
@@ -194,6 +196,7 @@ contract ConvexStakingBridge is BridgeBase {
      * @param _inputAssetA Asset for the RCT token
      * @param _outputAssetA Asset for the Curve LP token
      * @param _totalInputValue Number of Curve LP tokens to unstake
+     * @return outputValueA Number of withdrawn Curve LP tokens
      */
     function _withdraw(
         AztecTypes.AztecAsset memory _inputAssetA,
@@ -202,14 +205,14 @@ contract ConvexStakingBridge is BridgeBase {
     ) internal returns (uint256 outputValueA) {
         PoolInfo memory selectedPool = pools[_outputAssetA.erc20Address];
 
-        uint256 startCurveLpTokens = ICurveLpToken(_outputAssetA.erc20Address).balanceOf(address(this));
+        uint256 startCurveLpTokens = IERC20(_outputAssetA.erc20Address).balanceOf(address(this));
 
-        // transfer ownership of ConvexLP tokens from CrvRewards back to the bridge
+        // transfer ConvexLP tokens from CrvRewards back to the bridge
         ICurveRewards(selectedPool.curveRewards).withdraw(_totalInputValue, true); // always claim rewards
 
         BOOSTER.withdraw(selectedPool.poolId, _totalInputValue);
 
-        uint256 endCurveLpTokens = ICurveLpToken(_outputAssetA.erc20Address).balanceOf(address(this));
+        uint256 endCurveLpTokens = IERC20(_outputAssetA.erc20Address).balanceOf(address(this));
 
         outputValueA = (endCurveLpTokens - startCurveLpTokens);
 

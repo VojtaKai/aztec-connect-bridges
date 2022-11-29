@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPLv2
 pragma solidity >=0.8.4;
 
-interface IRepConvexToken {
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+interface IRepConvexToken is IERC20 {
     function mint(uint256 amount) external;
 
     function burn(uint256 amount) external;
-
-    function approve(address spender, uint256 amount) external returns (bool);
 }

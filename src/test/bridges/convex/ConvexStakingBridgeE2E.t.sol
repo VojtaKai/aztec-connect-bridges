@@ -12,18 +12,18 @@ import {ConvexStakingBridge} from "../../../bridges/convex/ConvexStakingBridge.s
 import {IConvexBooster} from "../../../interfaces/convex/IConvexBooster.sol";
 
 contract ConvexStakingBridgeE2ETest is BridgeTestBase {
+    address private constant BOOSTER = 0xF403C135812408BFbE8713b5A23a04b3D48AAE31;
+    address private constant BENEFICIARY = address(777);
+
     address private curveLpToken;
     address private convexLpToken;
     address private representingConvexToken;
     address private rctImplementation;
     address private rctClone;
-    address private constant BOOSTER = 0xF403C135812408BFbE8713b5A23a04b3D48AAE31;
     address private staker;
     address private gauge;
     address private stash;
     address private crvRewards;
-    address private constant BENEFICIARY = address(777);
-
     // The reference to the convex staking bridge
     ConvexStakingBridge private bridge;
 
