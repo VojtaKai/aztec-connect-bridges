@@ -3,12 +3,14 @@
 pragma solidity >=0.8.4;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {BridgeTestBase} from "./../../aztec/base/BridgeTestBase.sol";
 import {ConvexStakingBridge} from "../../../bridges/convex/ConvexStakingBridge.sol";
 import {AztecTypes} from "rollup-encoder/libraries/AztecTypes.sol";
 import {ErrorLib} from "../../../bridges/base/ErrorLib.sol";
 import {IConvexBooster} from "../../../interfaces/convex/IConvexBooster.sol";
+import {ICurveRewards} from "../../../interfaces/convex/ICurveRewards.sol";
 
 contract ConvexStakingBridgeTest is BridgeTestBase {
     address private constant BOOSTER = 0xF403C135812408BFbE8713b5A23a04b3D48AAE31;
@@ -28,11 +30,35 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
     address private rollupProcessor;
     ConvexStakingBridge private bridge;
 
+    // remove after test
+    // uint[] poolIds;
+    // uint[] rewardsLengths;
+    // address[] rewardAddresses;
+    // address[] rewardTokens;
+    // string[] rewardTokensNames;
+    // string[] rewardTokensSymbols;
 
-    uint256[] public invalidPids = [48]; // define invalid pids
-    mapping(uint256 => bool) public invalidPoolIds;
 
-    uint16[] public poolIdsToTest = new uint16[](5); // 5 test pool ids
+    // uint[] poolPidsToSkip;
+    // mapping(uint => bool) poolsToSkip;
+
+    // uint public counter;
+
+    // event showPoolIds(uint[] poolIds);
+    // event showRewardsLength(uint[] rewardsLengths);
+    // event showRewardAddresses(address[] rewardAddresses);
+    // event showRewardTokens(address[] rewardTokens);
+    // event showRewardTokensNames(string[] rewardTokensNames);
+    // event showRewardTokensSymbols(string[] rewardTokensSymbols);
+    // event showFuzzCounter(uint counter);
+
+
+    uint16[] public invalidPids = [48]; // define invalid pids
+    mapping(uint16 => bool) public invalidPoolIds;
+
+    mapping(uint16 => bool) public alreadyTestedPoolIds;
+
+    // uint16[] public poolIdsToTest = new uint16[](5); // 5 test pool ids
 
     uint256[] private rewardsGreater;
 
@@ -285,6 +311,63 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         }
     }
 
+    // function testRewards() public {
+    //     _setupInvPoolIds();
+
+    //     uint256 poolLength = IConvexBooster(BOOSTER).poolLength();
+
+    //     for (uint pid=0; pid < poolLength; pid++) {
+    //         if (poolsToSkip[pid]) {
+    //             continue;
+    //         }
+    //         (,,,address crvRewards,,) = IConvexBooster(BOOSTER).poolInfo(pid);
+    //         if (crvRewards == address(0)) {
+    //             continue;
+    //         }
+    //         poolIds.push(pid);
+
+    //         uint rewardsLength = ICurveRewards(crvRewards).extraRewardsLength();
+    //         rewardsLengths.push(rewardsLength);
+
+    //         for (uint rew = 0; rew < rewardsLength; rew++) {
+    //             address rewardAddr = ICurveRewards(crvRewards).extraRewards(rew); // rewards z crvRewards
+    //             rewardAddresses.push(rewardAddr);
+    //             address rewardToken = ICurveRewards(rewardAddr).rewardToken();
+    //             rewardTokens.push(rewardToken);
+    //             rewardTokensNames.push(ERC20(rewardToken).name());
+    //             rewardTokensSymbols.push(ERC20(rewardToken).symbol());
+    //         }
+    //     }
+
+    //     emit showPoolIds(poolIds);
+    //     emit showRewardsLength(rewardsLengths);
+    //     emit showRewardAddresses(rewardAddresses);
+    //     emit showRewardTokens(rewardTokens);
+    //     emit showRewardTokensNames(rewardTokensNames);
+    //     emit showRewardTokensSymbols(rewardTokensSymbols);
+    // }
+
+    function testStakeLpTokensNew(
+        uint96 _depositAmount,
+        uint16 _poolId
+    ) public {
+        vm.assume(_depositAmount > 1);
+
+        uint16 poolId = _getPoolId(_poolId);
+
+        _setupBridge(poolId);
+        _loadPool(poolId);
+        _setupRepresentingConvexTokenClone();
+        _setupSubsidy();
+
+        skip(1 days);
+        _deposit(_depositAmount);
+        rewind(1 days);
+
+        SUBSIDY.withdraw(BENEFICIARY);
+        assertGt(BENEFICIARY.balance, 0, "Subsidy was not claimed");
+    }
+
     function testWithdrawLpTokens(
         uint64 _withdrawalAmount,
         uint16 _poolId1,
@@ -323,6 +406,32 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         if (testedPoolOpen) {
             assertGt(rewardsGreater.length, 0);
         }
+    }
+
+    function testWithdrawLpTokensNew(
+        uint64 _withdrawalAmount,
+        uint16 _poolId
+    ) public {
+        vm.assume(_withdrawalAmount > 4012207);
+
+        uint16[2] memory poolIds = [_poolId, uint16(4)]; // Pool id 4 intentionally selected -> to prevent possibility that the randomly selected pool yields zero CRV and CVX rewards in the specified time frame.
+        for (uint256 i = 0; i < poolIds.length; i++) {
+            uint16 poolId = _getPoolId(poolIds[i]);
+
+            _setupBridge(poolId);
+
+            _loadPool(poolId);
+            _setupRepresentingConvexTokenClone();
+            _setupSubsidy();
+
+            // deposit Curve LP tokens, set up totalSupply on CrvRewards
+            skip(1 days);
+            _deposit(_withdrawalAmount);
+
+            _withdraw(_withdrawalAmount, poolId);
+        }
+        // Rewards successfully claimed check, some rewards may not have accumulated in the limited time frame
+        assertGt(rewardsGreater.length, 0);
     }
 
     /**
@@ -488,9 +597,50 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         poolIdsToTest.push(uint16(bound(_poolId5, 0, _poolLength - 1)));
     }
 
+    function _getPoolId(
+        uint16 _poolId
+    ) internal returns(uint16) {
+        uint256 poolLength = IConvexBooster(BOOSTER).poolLength();
+
+        // select a pool from a given range
+        uint16 poolId = uint16(bound(_poolId, 0, poolLength - 1));
+
+        // Pool is shut down
+        (,,,,, bool poolClosed) = IConvexBooster(BOOSTER).poolInfo(poolId);
+        if (poolClosed) {
+            invalidPoolIds[poolId] = true;
+        }
+        
+        while (invalidPoolIds[poolId] || alreadyTestedPoolIds[poolId]) {
+            poolId++;
+
+            // If poolId incremented by 1 jumps out of bounds, reset poolId back to 0
+            if (poolId == poolLength) {
+                poolId = 0;
+            }
+
+            // Pool is shut down, add it among the invalid pools
+            (,,,,, bool poolClosed) = IConvexBooster(BOOSTER).poolInfo(poolId);
+            if (poolClosed) {
+                invalidPoolIds[poolId] = true;
+            }
+        }
+
+        alreadyTestedPoolIds[poolId] = true;
+
+        return poolId;
+    }
+
     function _setupInvalidPoolIds() internal {
         for (uint256 pid = 0; pid < invalidPids.length; pid++) {
-            invalidPoolIds[invalidPids[pid]] = true;
+            invalidPoolIds[uint16(invalidPids[pid])] = true;
+        }
+    }
+
+    // remove
+    function _setupInvPoolIds() internal {
+        for (uint256 pid = 0; pid < poolPidsToSkip.length; pid++) {
+            poolsToSkip[poolPidsToSkip[pid]] = true;
         }
     }
 

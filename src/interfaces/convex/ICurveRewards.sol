@@ -12,4 +12,10 @@ interface ICurveRewards {
 
     // supply rate of tokens per second
     function rewardRate() external view returns (uint256);
+
+    function extraRewards(uint256 i) external view returns (address);
+
+    function extraRewardsLength() external view returns (uint256);
+
+    function rewardToken() external view returns (address);
 }

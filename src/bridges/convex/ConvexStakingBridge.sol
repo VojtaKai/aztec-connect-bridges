@@ -12,15 +12,19 @@ import {AztecTypes} from "rollup-encoder/libraries/AztecTypes.sol";
 import {ICurvePool} from "../../interfaces/curve/ICurvePool.sol";
 import {ErrorLib} from "../base/ErrorLib.sol";
 import {IConvexBooster} from "../../interfaces/convex/IConvexBooster.sol";
-// import {ICurveLpToken} from "../../interfaces/convex/ICurveLpToken.sol";
 import {ICurveRewards} from "../../interfaces/convex/ICurveRewards.sol";
 import {IRepConvexToken} from "../../interfaces/convex/IRepConvexToken.sol";
 import {RepresentingConvexToken} from "./RepresentingConvexToken.sol";
 
 /**
  * @notice Bridge that allows users stake their Curve LP tokens and earn rewards on them
+ * @dev User earns boosted CRV without locking them in for an extended period of time. Plus CVX and possibly other rewards.
+ * User can withdraw (unstake) any time.
+ * @dev Convex Finance mints pool specific Convex LP token but not for the staking user (the bridge) directly.
+ * RCT ERC20 token is deployed for each loaded pool and mirrors balance of minted Convex LP tokens for the bridge.
+ * Main purpose of RCT tokens is that they can be owned by the bridge and recovered by the Rollup Processor.
  * @dev Synchronous and stateless bridge
- * @author Vojtech Kaiser
+ * @author Vojtech Kaiser (VojtaKai on GitHub)
  */
 contract ConvexStakingBridge is BridgeBase {
     using SafeERC20 for IConvexBooster;
@@ -51,6 +55,23 @@ contract ConvexStakingBridge is BridgeBase {
     // mapping(CurveLpToken => PoolInfo)
     mapping(address => PoolInfo) public pools;
 
+    // CRV => ETH, pool crveth (0x8301ae4fc9c624d1d396cbdaa1ed877821d7c511)
+    // coins[0] = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2 (WETH) // Wrapped Eth
+    // coins[1] = 0xD533a949740bb3306d119CC777fa900bA034cd52 (CRV)
+
+    // CVX => ETH, 3 pools
+    // CVX => USDC, pool CVX/FraxBP (0xbec570d92afb7ffc553bdd9d4b4638121000b10d)
+    // coins[0] = 0x4e3FBD56CD56c3e72c1403e103b45Db9da5B9D2B (CVX)
+    // coins[1] = 0x3175Df0976dFA876431C2E9eE6Bc45b65d3473CC (crvFRAX = FRAX/USDC) // DIVNY TYPICO
+    // USDC => USDT, pool 3pool (0xbebc44782c7db0a1a60cb6fe97d0b483032ff1c7)
+    // coins[0] = 0x6B175474E89094C44Da98b954EedeAC495271d0F (DAI)
+    // coins[1] = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 (USDC)
+    // coins[2] = 0xdAC17F958D2ee523a2206206994597C13D831ec7 (USDT)
+    // USDT => ETH, pool tricrypto2 (0xD51a44d3FaE010294C616388b506AcdA1bfAAE46)
+    // coins[0] = 0xdAC17F958D2ee523a2206206994597C13D831ec7 (USDT)
+    // coins[1] = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599 (WBTC) // Wrapped Bitcoin
+    // coins[2] = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2 (WETH) // Wrapped Eth
+
     /**
      * @notice Sets the address of the RollupProcessor and deploys RCT token
      * @dev Deploys RCT token implementation
@@ -68,13 +89,13 @@ contract ConvexStakingBridge is BridgeBase {
     /**
      * @notice Stakes Curve LP tokens and earns rewards on them. Gets back RCT token.
      * @dev Convert rate between Curve LP token and corresponding Convex LP token is 1:1.
-     Stake == Deposit, Unstake == Withdraw
-     RCT (Representing Convex Token) is a representation of Convex LP token minted for bridge but fully owned by the bridge
+     * Stake == Deposit, Unstake == Withdraw
+     * RCT (Representing Convex Token) is a representation of Convex LP token minted for bridge but fully owned by the bridge
      * @param _inputAssetA Curve LP token (staking), RCT (unstaking)
      * @param _outputAssetA RCT (staking), Curve LP token (unstaking)
      * @param _totalInputValue Total number of Curve LP tokens to deposit / withdraw
      * @param _rollupBeneficiary Address of the beneficiary that receives subsidy
-     * @return outputValueA Number of Curve LP tokens staked / unstaked, Number of RCT minted / burned
+     * @return outputValueA Number of Curve LP tokens staked / unstaked, number of RCT minted / burned
      */
     function convert(
         AztecTypes.AztecAsset calldata _inputAssetA,
@@ -114,9 +135,9 @@ contract ConvexStakingBridge is BridgeBase {
     /**
      * @notice Loads pool information for a specific pool and sets up auxiliary services.
      * @dev Loads pool information for a specific pool supported by Convex Finance.
-     * @dev Deployment of RCT token for the specific pool is part of the loading.
-     * @dev Set allowance for Booster and Rollup Processor to manipulate bridge's Curve LP tokens and RCT (through RCT Clone).
-     * @dev Setup bridge subsidy.
+     * Deployment of RCT token for the specific pool is part of the loading.
+     * Set allowance for Booster and Rollup Processor to manipulate bridge's Curve LP tokens and RCT (through RCT Clone).
+     * Setup bridge subsidy.
      * @param _poolId Id of the pool to load
      */
     function loadPool(uint256 _poolId) external {
