@@ -225,7 +225,7 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
 
     function _setupInvalidPoolIds() internal {
         for (uint256 pid = 0; pid < invalidPids.length; pid++) {
-            invalidPoolIds[uint16(invalidPids[pid])] = true;
+            invalidPoolIds[invalidPids[pid]] = true;
         }
     }
 
