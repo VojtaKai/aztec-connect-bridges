@@ -37,7 +37,6 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
     // To store the id of the convex staking bridge after being added
     uint256 private bridgeId;
 
-
     function setUp() public {
         staker = IConvexBooster(BOOSTER).staker();
         _setupInvalidPoolIds();
@@ -54,12 +53,9 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
     /**
      * @notice Tests staking and withdrawing by constructing bridgeCallData and passing it directly
      * to RollupProcessor function that initializes the interaction with the bridge.
-     * @dev Compound test for 5 randomly selected pools from all available pools.
+     * @dev Tests a randomly selected pool from all available pools.
      */
-    function testStakeWithdrawFlow(
-        uint64 _depositAmount,
-        uint16 _poolId
-    ) public {
+    function testStakeWithdrawFlow(uint64 _depositAmount, uint16 _poolId) public {
         vm.assume(_depositAmount > 1);
 
         uint16 poolId = _getPoolId(_poolId);
@@ -78,19 +74,20 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
         ROLLUP_PROCESSOR.setSupportedAsset(rctClone, 100000);
         vm.stopPrank();
 
-        // Fetch the id of the convex staking bridge
+        // Fetch the id of the Convex Staking bridge
         bridgeId = ROLLUP_PROCESSOR.getSupportedBridgesLength();
 
         // get Aztec assets
         AztecTypes.AztecAsset memory curveLpAsset = ROLLUP_ENCODER.getRealAztecAsset(curveLpToken);
         AztecTypes.AztecAsset memory representingConvexAsset = ROLLUP_ENCODER.getRealAztecAsset(rctClone);
+        AztecTypes.AztecAsset memory ethAsset = ROLLUP_ENCODER.getRealAztecAsset(address(0));
 
         // // Mint depositAmount of Curve LP tokens for RollUp Processor
         deal(curveLpToken, address(ROLLUP_PROCESSOR), _depositAmount);
 
         _deposit(bridgeId, curveLpAsset, representingConvexAsset, _depositAmount);
 
-        _withdraw(bridgeId, representingConvexAsset, curveLpAsset, _depositAmount);
+        _withdraw(bridgeId, representingConvexAsset, curveLpAsset, ethAsset, _depositAmount);
     }
 
     function _deposit(
@@ -118,11 +115,14 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
         uint256 _bridgeId,
         AztecTypes.AztecAsset memory _representingConvexAsset,
         AztecTypes.AztecAsset memory _curveLpAsset,
+        AztecTypes.AztecAsset memory _ethAsset,
         uint256 _depositAmount
     ) internal {
+        uint256 initRollupBalance = address(ROLLUP_PROCESSOR).balance;
+
         // Compute withdrawal calldata
         ROLLUP_ENCODER.defiInteractionL2(
-            _bridgeId, _representingConvexAsset, emptyAsset, _curveLpAsset, emptyAsset, 0, _depositAmount
+            _bridgeId, _representingConvexAsset, emptyAsset, _curveLpAsset, _ethAsset, 0, _depositAmount
         );
 
         skip(1 days); // move time forward to have claimable amount on beneficiary
@@ -130,7 +130,7 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
         rewind(2 days); // move time back to original for the next bridge run
 
         assertEq(outputValueA, _depositAmount); // number of withdrawn tokens match deposited LP Tokens
-        assertEq(outputValueB, 0, "Output value B is not 0");
+        assertGe(outputValueB, 0, "Output value B is not greater or equal than 0"); // rewards claimed may or may not be swapped for ether and both is okay
         assertTrue(!isAsync, "Bridge is in async mode which it shouldn't");
 
         assertEq(IERC20(curveLpToken).balanceOf(address(ROLLUP_PROCESSOR)), _depositAmount); // Curve LP tokens owned by RollUp
@@ -139,10 +139,12 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
         assertEq(IERC20(rctClone).balanceOf(address(ROLLUP_PROCESSOR)), 0); // RCT succesfully burned
 
         assertGt(SUBSIDY.claimableAmount(BENEFICIARY), 0, "Claimable was not updated");
+
+        assertEq(address(ROLLUP_PROCESSOR).balance - initRollupBalance, outputValueB);
     }
 
     function _setupSubsidy() internal {
-        // Set ETH balance of bridge and BENEFICIARY to 0
+        // sets ETH balance of bridge and BENEFICIARY to 0
         vm.deal(address(bridge), 0);
         vm.deal(BENEFICIARY, 0);
 
@@ -189,9 +191,7 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
         vm.label(gauge, "Gauge Contract");
     }
 
-    function _getPoolId(
-        uint16 _poolId
-    ) internal returns(uint16 poolId) {
+    function _getPoolId(uint16 _poolId) internal returns (uint16 poolId) {
         bool poolClosed;
         uint256 poolLength = IConvexBooster(BOOSTER).poolLength();
 
@@ -203,7 +203,7 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
         if (poolClosed) {
             invalidPoolIds[poolId] = true;
         }
-        
+
         // select a pool that is not invalid, closed or has been already tested
         while (invalidPoolIds[poolId] || alreadyTestedPoolIds[poolId]) {
             poolId++;

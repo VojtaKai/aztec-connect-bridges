@@ -18,8 +18,9 @@ Note: Convex Finance has its own governance token CVX which user earns as part o
 ## What is the flow of the bridge?
 
 There are two flows of Convex staking bridge, namely deposits and withdrawals. It is necessary to mention that both flows work with pool specific Representing Convex Token (RCT) that is deployed for each pool on its loading.
+Interesting fact is that both flows work with different number of assets. Deposit work with a single input asset and a single outputAsset while Withdraw works with a single input asset and two output assets.
 
-![Token flow diagram](./ConvexStakingBridge.svg)
+![Asset flow diagram](./ConvexStakingBridge.svg)
 
 ### Deposit (Stake)
 
@@ -31,7 +32,7 @@ Bridge expects Curve LP token on input and RCT token on output in order to perfo
 
 RCT exists to enable Rollup Processor to properly perform deposits and withdrawals for different users at different times. Rollup Processor expects to work with at least one input and one output asset and both assets need to be able to be owned by it. Because minted Convex LP tokens are only indirectly owned by the bridge and the actual ownership is given to crvRewards contract, Convex LP token cannot be transferred back to the Rollup Provider. RCT tokens represents the minted Convex LP tokens, but this time the token is fully owned by the bridge and can be transferred elsewhere.
 
-Gas cost of a deposit varies based on the pool. Costs mostly fluctuate in range 550k to 750k. This does not include the transfers to/from the Rollup Processor.
+Gas cost of a deposit varies based on the pool. Costs mostly fluctuate in range 750k to 950k. This does not include the transfers to/from the Rollup Processor.
 
 **Edge cases**:
 
@@ -42,15 +43,20 @@ Gas cost of a deposit varies based on the pool. Costs mostly fluctuate in range 
 
 ### Withdrawal (Unstake)
 
-TL;DR: Rollup Processor transfers RCT tokens to the bridge. Bridge withdraws staked Curve LP tokens and staking rewards via Booster and direct interaction with crvRewards contract. Booster burns Convex LP tokens and returns staked Curve LP tokens to the bridge. RCT tokens are burned and returned Curve LP tokens are recovered by Rollup Processor.
+TL;DR: Rollup Processor transfers RCT tokens to the bridge. Bridge withdraws staked Curve LP tokens and staking rewards via Booster and direct interaction with crvRewards contract. Earned rewards are swapped for ether. Booster burns Convex LP tokens and returns staked Curve LP tokens to the bridge. RCT tokens are burned, returned Curve LP tokens and bridge (ether) balance are recovered by Rollup Processor.
 
 Before user starts with withdrawal, it is necessary to ensure that the pool for the given assets has already been loaded.
 
-Bridge expects RCT token on input and Curve LP token on output to perform withdrawal. Rollup Processor transfers RCT tokens to the bridge. Then a check is performed whether the pool for the given assets has already been loaded and the RCT token has already been deployed. Next check assures that the two assets belongs to the same pool. If both checks pass, the bridge searches for the right pool and then continues with withdrawal of Curve LP tokens. Withdrawal process consists of two steps. First, the bridge calls crvRewards contract to transfer the Convex LP tokens to the bridge and claim rewards. Second, the bridge calls the Booster to withdraw the deposited Curve LP tokens. It starts by burning the Convex LP tokens, then retrieves Curve LP tokens from Staker contract. If sufficient funds are not available, Staker pulls more deposited Curve LP tokens from the specific Curve pool liquidity gauge contract. Desired amount of Curve LP tokens is then retrieved and transferred back to the bridge. RCT tokens are burned to equally match the new amount of Convex LP tokens. Finally, Rollup Processor recovers the Curve LP tokens.
+Bridge expects a single input asset - RCT token - and two output assets - Curve LP token and ETH asset - to perform withdrawal. Rollup Processor transfers RCT tokens to the bridge. Then a check is performed whether the pool for the given assets has already been loaded and the RCT token has already been deployed. Next check assures that the input and output tokens belongs to the same pool and the second output asset represents ether. If both checks pass, the bridge searches for the right pool and then continues with withdrawal of Curve LP tokens. Withdrawal process consists of three steps. First, the bridge calls crvRewards contract to transfer the Convex LP tokens to the bridge and claim rewards. Second, the earned rewards tokens - CRV and CVX - are swapped for ether if the earned amount allows it. Third, the bridge calls the Booster to withdraw the deposited Curve LP tokens. It starts by burning the Convex LP tokens, then retrieves Curve LP tokens from Staker contract. If sufficient funds are not available, Staker pulls more deposited Curve LP tokens from the specific Curve pool liquidity gauge contract. Desired amount of Curve LP tokens is then retrieved and transferred back to the bridge. RCT tokens are burned to equally match the new amount of Convex LP tokens. Finally, Rollup Processor recovers the Curve LP tokens and ether.
 
-Claimed rewards are the boosted CRV tokens, CVX tokens and for some pools some additional rewards. These rewards are minted for the bridge and are not recovered by the Rollup Processor.
+Claimed rewards are the boosted CRV tokens, CVX tokens and for some pools some additional rewards. The most notable reward tokens - CRV and CVX - are swapped for ether and send to the Rollup Processor if the amount is high enough or if slippage is higher than 1 %. Minimum amount required for the conversion to happen is given by the immediate conversion rate. If rewards cannot be claimed, the rewarded tokens are still owned by the bridge until the point when on withdrawal the token balances are sufficiently high enough to be swapped. Other additional rewards are, for their insignificance, not claimed.
 
-Gas cost of a withdrawal varies based on the pool. Costs mostly fluctuate in range 300k to 450k. This does not include the transfers to/from the Rollup Processor.
+Exchange of tokens for ether takes place in Curve's pools. 
+Swap          |  Curve Pool  |  Link to Pool
+CRV => ether  |  crveth      |  https://curve.fi/#/ethereum/pools/crveth/swap
+CVX => ether  |  cvxeth      |  https://curve.fi/#/ethereum/pools/cvxeth/swap
+
+Gas cost of a withdrawal varies based on the pool. Withdrawal costs about 1.4M when claimed rewards are not swapped and about 2.1M when they are. Swap costs about 650K. Costs include claim of subsidy but do not include the transfers to/from the Rollup Processor.
 
 **Edge cases**
 
@@ -59,13 +65,13 @@ Gas cost of a withdrawal varies based on the pool. Costs mostly fluctuate in ran
 - Withdrawal impossible if interaction was already cleared.
 - Withdrawal amount has to match amount of tokens staked under the interaction.
 - Withdrawal amount cannot be zero.
+- OutputAssetB (ether) will not return any ether unless the collected amount of reward tokens is high enough for an exchange. 
 
 ### General Properties for both deposit and withdrawal
 
 - The bridge is synchronous, and will always return `isAsync = false`.
 - The bridge does not use `auxData`.
 - Bridge is stateless.
-- Single input asset and single output asset is expected.
 
 ## Can tokens balances be impacted by external parties, if yes, how?
 

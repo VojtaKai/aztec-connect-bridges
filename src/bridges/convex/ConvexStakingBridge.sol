@@ -14,11 +14,14 @@ import {ErrorLib} from "../base/ErrorLib.sol";
 import {IConvexBooster} from "../../interfaces/convex/IConvexBooster.sol";
 import {ICurveRewards} from "../../interfaces/convex/ICurveRewards.sol";
 import {IRepConvexToken} from "../../interfaces/convex/IRepConvexToken.sol";
+import {ICrvEthExchange} from "../../interfaces/convex/ICrvEthExchange.sol";
+import {IRollupProcessor} from "rollup-encoder/interfaces/IRollupProcessor.sol";
 import {RepresentingConvexToken} from "./RepresentingConvexToken.sol";
 
 /**
- * @notice Bridge that allows users stake their Curve LP tokens and earn rewards on them
+ * @notice Bridge that allows users stake their Curve LP tokens and earn rewards on them.
  * @dev User earns boosted CRV without locking them in for an extended period of time. Plus CVX and possibly other rewards.
+ * Rewards are swapped for ether if sufficient amount is earned.
  * User can withdraw (unstake) any time.
  * @dev Convex Finance mints pool specific Convex LP token but not for the staking user (the bridge) directly.
  * RCT ERC20 token is deployed for each loaded pool and mirrors balance of minted Convex LP tokens for the bridge.
@@ -28,6 +31,7 @@ import {RepresentingConvexToken} from "./RepresentingConvexToken.sol";
  */
 contract ConvexStakingBridge is BridgeBase {
     using SafeERC20 for IConvexBooster;
+    using SafeERC20 for IRepConvexToken;
     using SafeERC20 for IERC20;
 
     /**
@@ -55,22 +59,13 @@ contract ConvexStakingBridge is BridgeBase {
     // mapping(CurveLpToken => PoolInfo)
     mapping(address => PoolInfo) public pools;
 
-    // CRV => ETH, pool crveth (0x8301ae4fc9c624d1d396cbdaa1ed877821d7c511)
-    // coins[0] = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2 (WETH) // Wrapped Eth
-    // coins[1] = 0xD533a949740bb3306d119CC777fa900bA034cd52 (CRV)
+    // Reward tokens
+    address public constant CRV = 0xD533a949740bb3306d119CC777fa900bA034cd52;
+    address public constant CVX = 0x4e3FBD56CD56c3e72c1403e103b45Db9da5B9D2B;
 
-    // CVX => ETH, 3 pools
-    // CVX => USDC, pool CVX/FraxBP (0xbec570d92afb7ffc553bdd9d4b4638121000b10d)
-    // coins[0] = 0x4e3FBD56CD56c3e72c1403e103b45Db9da5B9D2B (CVX)
-    // coins[1] = 0x3175Df0976dFA876431C2E9eE6Bc45b65d3473CC (crvFRAX = FRAX/USDC) // DIVNY TYPICO
-    // USDC => USDT, pool 3pool (0xbebc44782c7db0a1a60cb6fe97d0b483032ff1c7)
-    // coins[0] = 0x6B175474E89094C44Da98b954EedeAC495271d0F (DAI)
-    // coins[1] = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 (USDC)
-    // coins[2] = 0xdAC17F958D2ee523a2206206994597C13D831ec7 (USDT)
-    // USDT => ETH, pool tricrypto2 (0xD51a44d3FaE010294C616388b506AcdA1bfAAE46)
-    // coins[0] = 0xdAC17F958D2ee523a2206206994597C13D831ec7 (USDT)
-    // coins[1] = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599 (WBTC) // Wrapped Bitcoin
-    // coins[2] = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2 (WETH) // Wrapped Eth
+    // Swapping pools
+    address public constant CRVETH = 0x8301AE4fc9c624d1D396cbDAa1ed877821D7C511;
+    address public constant CVXETH = 0xB576491F1E6e5E62f1d8F26062Ee822B40B0E0d4;
 
     /**
      * @notice Sets the address of the RollupProcessor and deploys RCT token
@@ -82,7 +77,7 @@ contract ConvexStakingBridge is BridgeBase {
     }
 
     /**
-     * @notice Empty receive function so the bridge can receive ether. Used for subsidy.
+     * @notice Empty receive function so the bridge can receive ether. Used for subsidy and swap of rewards for ether.
      */
     receive() external payable {}
 
@@ -90,23 +85,27 @@ contract ConvexStakingBridge is BridgeBase {
      * @notice Stakes Curve LP tokens and earns rewards on them. Gets back RCT token.
      * @dev Convert rate between Curve LP token and corresponding Convex LP token is 1:1.
      * Stake == Deposit, Unstake == Withdraw
-     * RCT (Representing Convex Token) is a representation of Convex LP token minted for bridge but fully owned by the bridge
+     * RCT (Representing Convex Token) is a representation of Convex LP token minted for bridge but fully owned by the bridge.
+     * CRV and CXV rewards are swapped for ether if sufficient amount is present.
      * @param _inputAssetA Curve LP token (staking), RCT (unstaking)
      * @param _outputAssetA RCT (staking), Curve LP token (unstaking)
+     * @param _outputAssetB ETH (Unstaking) - CRV and CVX token rewards are turned into ether
      * @param _totalInputValue Total number of Curve LP tokens to deposit / withdraw
+     * @param _interactionNonce A unique identifier of the DeFi interaction
      * @param _rollupBeneficiary Address of the beneficiary that receives subsidy
      * @return outputValueA Number of Curve LP tokens staked / unstaked, number of RCT minted / burned
+     * @return outputValueB Amount of ETH collected for swapped rewards
      */
     function convert(
         AztecTypes.AztecAsset calldata _inputAssetA,
         AztecTypes.AztecAsset calldata,
         AztecTypes.AztecAsset calldata _outputAssetA,
-        AztecTypes.AztecAsset calldata,
+        AztecTypes.AztecAsset calldata _outputAssetB,
         uint256 _totalInputValue,
-        uint256,
+        uint256 _interactionNonce,
         uint64,
         address _rollupBeneficiary
-    ) external payable override (BridgeBase) onlyRollup returns (uint256 outputValueA, uint256, bool) {
+    ) external payable override (BridgeBase) onlyRollup returns (uint256 outputValueA, uint256 outputValueB, bool) {
         if (
             _inputAssetA.assetType != AztecTypes.AztecAssetType.ERC20
                 || _outputAssetA.assetType != AztecTypes.AztecAssetType.ERC20
@@ -119,9 +118,12 @@ contract ConvexStakingBridge is BridgeBase {
             PoolInfo memory selectedPool = pools[_inputAssetA.erc20Address];
 
             outputValueA = _deposit(_outputAssetA, _totalInputValue, selectedPool);
-        } else if (deployedClones[_outputAssetA.erc20Address] == _inputAssetA.erc20Address) {
+        } else if (
+            deployedClones[_outputAssetA.erc20Address] == _inputAssetA.erc20Address
+                && _outputAssetB.assetType == AztecTypes.AztecAssetType.ETH
+        ) {
             // withdrawal
-            outputValueA = _withdraw(_inputAssetA, _outputAssetA, _totalInputValue);
+            (outputValueA, outputValueB) = _withdraw(_inputAssetA, _outputAssetA, _totalInputValue, _interactionNonce);
         } else {
             revert ErrorLib.InvalidInput(); // invalid address or pool has not been loaded yet / RCT token not deployed yet
         }
@@ -137,6 +139,7 @@ contract ConvexStakingBridge is BridgeBase {
      * @dev Loads pool information for a specific pool supported by Convex Finance.
      * Deployment of RCT token for the specific pool is part of the loading.
      * Set allowance for Booster and Rollup Processor to manipulate bridge's Curve LP tokens and RCT (through RCT Clone).
+     * Set allowance for exchange pools to collect earned rewards.
      * Setup bridge subsidy.
      * @param _poolId Id of the pool to load
      */
@@ -144,7 +147,7 @@ contract ConvexStakingBridge is BridgeBase {
         (address curveLpToken, address convexLpToken,, address curveRewards,,) = BOOSTER.poolInfo(_poolId);
         pools[curveLpToken] = PoolInfo(uint96(_poolId), convexLpToken, curveRewards);
 
-        // deploy clone, log clone address
+        // deploy RCT clone, log clone address
         address deployedClone = Clones.clone(RCT_IMPLEMENTATION);
         // RCT token initialization - deploy fully working ERC20 RCT token
         RepresentingConvexToken(deployedClone).initialize("RepresentingConvexToken", "RCT");
@@ -152,9 +155,11 @@ contract ConvexStakingBridge is BridgeBase {
         deployedClones[curveLpToken] = deployedClone;
 
         // approvals
-        IERC20(curveLpToken).approve(address(BOOSTER), type(uint256).max);
-        IERC20(curveLpToken).approve(ROLLUP_PROCESSOR, type(uint256).max);
-        IRepConvexToken(deployedClone).approve(ROLLUP_PROCESSOR, type(uint256).max);
+        IERC20(curveLpToken).safeIncreaseAllowance(address(BOOSTER), type(uint256).max);
+        IERC20(curveLpToken).safeIncreaseAllowance(ROLLUP_PROCESSOR, type(uint256).max);
+        IRepConvexToken(deployedClone).safeIncreaseAllowance(ROLLUP_PROCESSOR, type(uint256).max);
+        IERC20(CRV).safeIncreaseAllowance(CRVETH, type(uint256).max);
+        IERC20(CVX).safeIncreaseAllowance(CVXETH, type(uint256).max);
 
         // subsidy
         uint256[] memory criterias = new uint256[](2);
@@ -214,22 +219,26 @@ contract ConvexStakingBridge is BridgeBase {
     /**
      * @notice Withdraws Curve LP tokens.
      * @dev RCT is burned for the bridge. Mirrors balance of minted Convex LP tokens for the bridge.
-     * @param _inputAssetA Asset for the RCT token
-     * @param _outputAssetA Asset for the Curve LP token
-     * @param _totalInputValue Number of Curve LP tokens to unstake
-     * @return outputValueA Number of withdrawn Curve LP tokens
+     * @param _inputAssetA Asset for the RCT token.
+     * @param _outputAssetA Asset for the Curve LP token.
+     * @param _totalInputValue Number of Curve LP tokens to unstake.
+     * @return outputValueA Number of withdrawn Curve LP tokens.
      */
     function _withdraw(
         AztecTypes.AztecAsset memory _inputAssetA,
         AztecTypes.AztecAsset memory _outputAssetA,
-        uint256 _totalInputValue
-    ) internal returns (uint256 outputValueA) {
+        uint256 _totalInputValue,
+        uint256 _interactionNonce
+    ) internal returns (uint256 outputValueA, uint256 outputValueB) {
         PoolInfo memory selectedPool = pools[_outputAssetA.erc20Address];
 
         uint256 startCurveLpTokens = IERC20(_outputAssetA.erc20Address).balanceOf(address(this));
 
         // transfer ConvexLP tokens from CrvRewards back to the bridge
         ICurveRewards(selectedPool.curveRewards).withdraw(_totalInputValue, true); // always claim rewards
+
+        outputValueB += _swapRewardTokenForEth(CRVETH, CRV);
+        outputValueB += _swapRewardTokenForEth(CVXETH, CVX);
 
         BOOSTER.withdraw(selectedPool.poolId, _totalInputValue);
 
@@ -238,6 +247,30 @@ contract ConvexStakingBridge is BridgeBase {
         outputValueA = (endCurveLpTokens - startCurveLpTokens);
 
         IRepConvexToken(_inputAssetA.erc20Address).burn(_totalInputValue);
+
+        // Send ETH to rollup processor
+        IRollupProcessor(ROLLUP_PROCESSOR).receiveEthFromBridge{value: outputValueB}(_interactionNonce);
+    }
+
+    /**
+     * @notice Swaps reward tokens for ether.
+     * @dev dyMin is the least acceptable amount of ether for the amount of _token. Tolerated price difference due to slippage is 1 %.
+     * @param _exchangePool Curve swapping (exchange) pool used to exchange a reward token for ether.
+     * @param _token Reward token to swap for ether.
+     * @return collectedEth Amount of ether collected for the amount of _token.
+     */
+    function _swapRewardTokenForEth(address _exchangePool, address _token) private returns (uint256 collectedEth) {
+        uint256 dyMin;
+        try ICrvEthExchange(_exchangePool).get_dy(1, 0, IERC20(_token).balanceOf(address(this))) returns (uint256 dy) {
+            dyMin = dy * 99 / 100;
+        } catch {}
+
+        if (dyMin > 0) {
+            try ICrvEthExchange(_exchangePool).exchange_underlying(1, 0, IERC20(_token).balanceOf(address(this)), dyMin)
+            returns (uint256 value) {
+                collectedEth = value;
+            } catch {}
+        }
     }
 
     /**

@@ -30,14 +30,15 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
     address private rollupProcessor;
     ConvexStakingBridge private bridge;
 
-
     uint16[] public invalidPids = [48]; // define invalid pids
     mapping(uint16 => bool) public invalidPoolIds;
 
     // map of already tested pools, mapping(poolId => bool)
     mapping(uint16 => bool) public alreadyTestedPoolIds;
 
-    uint256[] private rewardsGreater;
+    uint256[] private rewardsClaimedAndSwapped;
+
+    function receiveEthFromBridge(uint256 _interactionNonce) external payable {}
 
     function setUp() public {
         rollupProcessor = address(this);
@@ -142,7 +143,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
             AztecTypes.AztecAsset(100, rctClone, AztecTypes.AztecAssetType.ERC20),
             emptyAsset,
             AztecTypes.AztecAsset(1, invalidLpToken, AztecTypes.AztecAssetType.ERC20),
-            emptyAsset,
+            AztecTypes.AztecAsset(20, address(0), AztecTypes.AztecAssetType.ETH),
             withdrawalAmount,
             0,
             0,
@@ -166,7 +167,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         // make deposit for a pool at index `lastPoolId`
         _deposit(withdrawalAmount);
 
-        // withdraw using incorrect pool - RCT Asset address won't match deployed Clone address of the provided Curve LP token
+        // withdraw using incorrect pool - RCT Asset address won't match deployed RCT clone address of the provided Curve LP token
         (incorrectCurveLpToken,,,,,) = IConvexBooster(BOOSTER).poolInfo(anotherPoolId);
         vm.label(incorrectCurveLpToken, "Incorrect Curve LP Token Contract");
 
@@ -175,7 +176,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
             AztecTypes.AztecAsset(100, rctClone, AztecTypes.AztecAssetType.ERC20),
             emptyAsset,
             AztecTypes.AztecAsset(1, incorrectCurveLpToken, AztecTypes.AztecAssetType.ERC20),
-            emptyAsset,
+            AztecTypes.AztecAsset(20, address(0), AztecTypes.AztecAssetType.ETH),
             withdrawalAmount,
             0,
             0,
@@ -198,8 +199,8 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         bridge.convert(
             AztecTypes.AztecAsset(100, rctClone, AztecTypes.AztecAssetType.ERC20),
             emptyAsset,
-            AztecTypes.AztecAsset(1, address(0), AztecTypes.AztecAssetType.ETH),
-            emptyAsset,
+            AztecTypes.AztecAsset(20, address(0), AztecTypes.AztecAssetType.ETH),
+            AztecTypes.AztecAsset(20, address(0), AztecTypes.AztecAssetType.ETH),
             withdrawalAmount,
             0,
             0,
@@ -255,10 +256,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         );
     }
 
-    function testStakeLpTokens(
-        uint96 _depositAmount,
-        uint16 _poolId
-    ) public {
+    function testStakeLpTokens(uint96 _depositAmount, uint16 _poolId) public {
         vm.assume(_depositAmount > 1);
 
         uint16 poolId = _getPoolId(_poolId);
@@ -276,11 +274,8 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         assertGt(BENEFICIARY.balance, 0, "Subsidy was not claimed");
     }
 
-    function testWithdrawLpTokens(
-        uint64 _withdrawalAmount,
-        uint16 _poolId
-    ) public {
-        vm.assume(_withdrawalAmount > 4012207);
+    function testWithdrawLpTokens(uint64 _withdrawalAmount, uint16 _poolId) public {
+        vm.assume(_withdrawalAmount > 40122070000000000);
 
         uint16[2] memory poolIds = [_poolId, uint16(4)]; // Pool id 4 intentionally selected -> to prevent possibility that the randomly selected pool yields zero CRV and CVX rewards in the specified time frame.
 
@@ -299,63 +294,55 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
             _withdraw(_withdrawalAmount, poolId);
         }
-        // Rewards successfully claimed check, some rewards may not have accumulated in the limited time frame
-        assertGt(rewardsGreater.length, 0);
+        // Rewards successfully claimed check, some rewards may not have accumulated in the limited time frame for the swap for ether to happen
+        assertGt(rewardsClaimedAndSwapped.length, 0);
     }
 
-    /**
-     * @notice Performs withdrawal of Curve LP tokens and checks.
-     * @dev Transferring RCT tokens to the bridge
-     * @dev Checks of unstaked Curve LP tokens, earned rewards and claimed subsidy.
-     * @param _withdrawalAmount Number of Curve LP tokens to unstake.
-     * @param _poolId Id of the pool withdrawal is performed at.
-     */
-    function _withdraw(uint64 _withdrawalAmount, uint256 _poolId) internal {
-        // transfer representing Convex tokens to the bridge
-        IERC20(rctClone).transfer(address(bridge), _withdrawalAmount);
+    function testWithdrawLpTokensRewardsNotSwapped(uint16 _poolId) public {
+        uint64 _withdrawalAmount = 1;
 
+        uint16 poolId = _getPoolId(_poolId);
+
+        _setupBridge(poolId);
+
+        _loadPool(poolId);
+        _setupRepresentingConvexTokenClone();
+        _setupSubsidy();
+
+        // deposit Curve LP tokens, set up totalSupply on CrvRewards
+        skip(1 days);
+        _deposit(_withdrawalAmount);
+
+        deal(CRV_TOKEN, address(bridge), 10);
+
+        // fake initial amount of CRV and CVX tokens set to zero before rewards are claimed
+        vm.mockCall(
+            CRV_TOKEN, abi.encodeWithSelector(IERC20(CRV_TOKEN).balanceOf.selector, address(bridge)), abi.encode(0)
+        );
+        vm.mockCall(
+            CVX_TOKEN, abi.encodeWithSelector(IERC20(CVX_TOKEN).balanceOf.selector, address(bridge)), abi.encode(0)
+        );
         uint256 rewardsCRVBefore = IERC20(CRV_TOKEN).balanceOf(address(bridge));
         uint256 rewardsCVXBefore = IERC20(CVX_TOKEN).balanceOf(address(bridge));
 
-        skip(8 days);
-        (uint256 outputValueA, uint256 outputValueB, bool isAsync) = bridge.convert(
-            AztecTypes.AztecAsset(100, rctClone, AztecTypes.AztecAssetType.ERC20),
-            emptyAsset,
-            AztecTypes.AztecAsset(1, curveLpToken, AztecTypes.AztecAssetType.ERC20),
-            emptyAsset,
-            _withdrawalAmount,
-            0,
-            0,
-            BENEFICIARY
+        // fake amount of CRV and CVX tokens but low enough that swap to ether will not happen
+        vm.mockCall(
+            CRV_TOKEN, abi.encodeWithSelector(IERC20(CRV_TOKEN).balanceOf.selector, address(bridge)), abi.encode(80)
         );
-        rewind(9 days);
+        vm.mockCall(
+            CVX_TOKEN, abi.encodeWithSelector(IERC20(CVX_TOKEN).balanceOf.selector, address(bridge)), abi.encode(180)
+        );
+        _withdraw(_withdrawalAmount, poolId);
 
         uint256 rewardsCRVAfter = IERC20(CRV_TOKEN).balanceOf(address(bridge));
         uint256 rewardsCVXAfter = IERC20(CVX_TOKEN).balanceOf(address(bridge));
 
-        if (rewardsCRVAfter > rewardsCRVBefore && rewardsCVXAfter > rewardsCVXBefore) {
-            rewardsGreater.push(_poolId);
-        }
+        vm.clearMockedCalls();
 
-        assertEq(outputValueA, _withdrawalAmount);
-        assertEq(outputValueB, 0, "Output value B is not 0");
-        assertTrue(!isAsync, "Bridge is in async mode which it shouldn't");
+        assertGt(rewardsCRVAfter, rewardsCRVBefore, "No CRV Rewards has accumulated");
+        assertGt(rewardsCVXAfter, rewardsCVXBefore, "No CVX Rewards has accumulated");
 
-        // Transfer Curve LP tokens from the bridge to Rollup Processor
-        assertEq(IERC20(curveLpToken).balanceOf(address(bridge)), _withdrawalAmount);
-        IERC20(curveLpToken).transferFrom(address(bridge), rollupProcessor, _withdrawalAmount);
-        assertEq(IERC20(curveLpToken).balanceOf(rollupProcessor), _withdrawalAmount);
-
-        // Check that representing Convex tokens were successfully burned
-        assertEq(IERC20(rctClone).balanceOf(rollupProcessor), 0);
-        assertEq(IERC20(rctClone).balanceOf(address(bridge)), 0);
-
-        // Claim subsidy at withdrawal
-        SUBSIDY.withdraw(BENEFICIARY);
-        assertGt(BENEFICIARY.balance, 0, "Subsidy was not claimed");
-
-        // Rewards successfully claimed check, some rewards may not have accumulated in the limited time frame
-        assertGe(rewardsGreater.length, 0);
+        assertEq(rewardsClaimedAndSwapped.length, 0);
     }
 
     /**
@@ -392,6 +379,52 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         // transfer representing Convex token to RollupProcessor
         IERC20(rctClone).transferFrom(address(bridge), rollupProcessor, _depositAmount);
         assertEq(IERC20(rctClone).balanceOf(rollupProcessor), _depositAmount);
+    }
+
+    /**
+     * @notice Performs withdrawal of Curve LP tokens and asserts.
+     * @dev Transferring RCT tokens to the bridge
+     * @dev Checks of unstaked Curve LP tokens, earned rewards and claimed subsidy.
+     * @param _withdrawalAmount Number of Curve LP tokens to unstake.
+     * @param _poolId Id of the pool withdrawal is performed at.
+     */
+    function _withdraw(uint64 _withdrawalAmount, uint256 _poolId) internal {
+        // poolId can be uint16 todo
+        // transfer representing Convex tokens to the bridge
+        IERC20(rctClone).transfer(address(bridge), _withdrawalAmount);
+
+        skip(8 days);
+        (uint256 outputValueA, uint256 outputValueB, bool isAsync) = bridge.convert(
+            AztecTypes.AztecAsset(100, rctClone, AztecTypes.AztecAssetType.ERC20),
+            emptyAsset,
+            AztecTypes.AztecAsset(1, curveLpToken, AztecTypes.AztecAssetType.ERC20),
+            AztecTypes.AztecAsset(20, address(0), AztecTypes.AztecAssetType.ETH),
+            _withdrawalAmount,
+            10,
+            0,
+            BENEFICIARY
+        );
+        rewind(9 days);
+
+        if (outputValueB > 0) {
+            rewardsClaimedAndSwapped.push(_poolId);
+        }
+        assertEq(outputValueA, _withdrawalAmount);
+        assertGe(outputValueB, 0, "Output value B is not greater or equal to 0");
+        assertTrue(!isAsync, "Bridge is in async mode which it shouldn't");
+
+        // Transfer Curve LP tokens from the bridge to Rollup Processor
+        assertEq(IERC20(curveLpToken).balanceOf(address(bridge)), _withdrawalAmount);
+        IERC20(curveLpToken).transferFrom(address(bridge), rollupProcessor, _withdrawalAmount);
+        assertEq(IERC20(curveLpToken).balanceOf(rollupProcessor), _withdrawalAmount);
+
+        // Check that representing Convex tokens were successfully burned
+        assertEq(IERC20(rctClone).balanceOf(rollupProcessor), 0);
+        assertEq(IERC20(rctClone).balanceOf(address(bridge)), 0);
+
+        // Claim subsidy at withdrawal
+        SUBSIDY.withdraw(BENEFICIARY);
+        assertGt(BENEFICIARY.balance, 0, "Subsidy was not claimed");
     }
 
     function _setupRepresentingConvexTokenClone() internal {
@@ -450,9 +483,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         SUBSIDY.registerBeneficiary(BENEFICIARY);
     }
 
-    function _getPoolId(
-        uint16 _poolId
-    ) internal returns(uint16 poolId) {
+    function _getPoolId(uint16 _poolId) internal returns (uint16 poolId) {
         bool poolClosed;
         uint256 poolLength = IConvexBooster(BOOSTER).poolLength();
 
@@ -464,7 +495,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         if (poolClosed) {
             invalidPoolIds[poolId] = true;
         }
-        
+
         // select a pool that is not invalid, closed or has been already tested
         while (invalidPoolIds[poolId] || alreadyTestedPoolIds[poolId]) {
             poolId++;
