@@ -135,11 +135,18 @@ contract ConvexStakingBridge is BridgeBase {
     }
 
     /**
+     * @notice Sets allowance for exchange pools to collect earned rewards
+     */
+    function setApprovals() external {
+        if (!IERC20(CRV).approve(CRVETH, type(uint256).max)) revert ErrorLib.ApproveFailed(CRV);
+        if (!IERC20(CVX).approve(CVXETH, type(uint256).max)) revert ErrorLib.ApproveFailed(CVX);
+    }
+
+    /**
      * @notice Loads pool information for a specific pool and sets up auxiliary services.
      * @dev Loads pool information for a specific pool supported by Convex Finance.
      * Deployment of RCT token for the specific pool is part of the loading.
      * Set allowance for Booster and Rollup Processor to manipulate bridge's Curve LP tokens and RCT (through RCT Clone).
-     * Set allowance for exchange pools to collect earned rewards.
      * Setup bridge subsidy.
      * @param _poolId Id of the pool to load
      */
@@ -154,12 +161,10 @@ contract ConvexStakingBridge is BridgeBase {
 
         deployedClones[curveLpToken] = deployedClone;
 
-        // approvals
+        // approvals for pool specific tokens
         IERC20(curveLpToken).safeIncreaseAllowance(address(BOOSTER), type(uint256).max);
         IERC20(curveLpToken).safeIncreaseAllowance(ROLLUP_PROCESSOR, type(uint256).max);
         IRepConvexToken(deployedClone).safeIncreaseAllowance(ROLLUP_PROCESSOR, type(uint256).max);
-        IERC20(CRV).safeIncreaseAllowance(CRVETH, type(uint256).max);
-        IERC20(CVX).safeIncreaseAllowance(CVXETH, type(uint256).max);
 
         // subsidy
         uint256[] memory criterias = new uint256[](2);

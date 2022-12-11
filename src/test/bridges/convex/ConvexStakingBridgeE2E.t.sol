@@ -180,6 +180,7 @@ contract ConvexStakingBridgeE2ETest is BridgeTestBase {
 
     function _setupBridge(uint256 _poolId) internal {
         bridge = new ConvexStakingBridge(address(ROLLUP_PROCESSOR));
+        bridge.setApprovals();
         (curveLpToken, convexLpToken, gauge, crvRewards, stash,) = IConvexBooster(BOOSTER).poolInfo(_poolId);
 
         // labels

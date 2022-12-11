@@ -16,6 +16,8 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
     address private constant BOOSTER = 0xF403C135812408BFbE8713b5A23a04b3D48AAE31;
     address private constant CRV_TOKEN = 0xD533a949740bb3306d119CC777fa900bA034cd52;
     address private constant CVX_TOKEN = 0x4e3FBD56CD56c3e72c1403e103b45Db9da5B9D2B;
+    address public constant CRVETH_EXCHANGE_POOL = 0x8301AE4fc9c624d1D396cbDAa1ed877821D7C511;
+    address public constant CVXETH_EXCHANGE_POOL = 0xB576491F1E6e5E62f1d8F26062Ee822B40B0E0d4;
     address private constant BENEFICIARY = address(777);
 
     address private curveLpToken;
@@ -55,6 +57,8 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
         vm.label(minter, "Minter");
         vm.label(CRV_TOKEN, "Reward boosted CRV Token");
         vm.label(CVX_TOKEN, "Reward CVX Token");
+        vm.label(CRVETH_EXCHANGE_POOL, "CRV to ETH exchange pool");
+        vm.label(CVXETH_EXCHANGE_POOL, "CVX to ETH exchange pool");
         vm.label(BENEFICIARY, "Beneficiary");
     }
 
@@ -145,7 +149,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
             AztecTypes.AztecAsset(1, invalidLpToken, AztecTypes.AztecAssetType.ERC20),
             AztecTypes.AztecAsset(20, address(0), AztecTypes.AztecAssetType.ETH),
             withdrawalAmount,
-            0,
+            10,
             0,
             BENEFICIARY
         );
@@ -178,7 +182,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
             AztecTypes.AztecAsset(1, incorrectCurveLpToken, AztecTypes.AztecAssetType.ERC20),
             AztecTypes.AztecAsset(20, address(0), AztecTypes.AztecAssetType.ETH),
             withdrawalAmount,
-            0,
+            10,
             0,
             BENEFICIARY
         );
@@ -202,7 +206,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
             AztecTypes.AztecAsset(20, address(0), AztecTypes.AztecAssetType.ETH),
             AztecTypes.AztecAsset(20, address(0), AztecTypes.AztecAssetType.ETH),
             withdrawalAmount,
-            0,
+            10,
             0,
             BENEFICIARY
         );
@@ -441,6 +445,7 @@ contract ConvexStakingBridgeTest is BridgeTestBase {
 
     function _setupBridge(uint256 _poolId) internal {
         bridge = new ConvexStakingBridge(rollupProcessor);
+        bridge.setApprovals();
         (curveLpToken, convexLpToken, gauge, crvRewards, stash,) = IConvexBooster(BOOSTER).poolInfo(_poolId);
 
         // labels
